@@ -1,0 +1,140 @@
+// Unit struct, its enums, and their string conversions.
+#include "model/unit.hpp"
+
+namespace nyst {
+
+std::string toString(Manager manager) {
+    switch (manager) {
+    case Manager::System:
+        return "system";
+    case Manager::User:
+        return "user";
+    }
+    return "unknown";
+}
+
+std::string toString(ActiveState state) {
+    switch (state) {
+    case ActiveState::Active:
+        return "active";
+    case ActiveState::Inactive:
+        return "inactive";
+    case ActiveState::Failed:
+        return "failed";
+    case ActiveState::Activating:
+        return "activating";
+    case ActiveState::Deactivating:
+        return "deactivating";
+    case ActiveState::Reloading:
+        return "reloading";
+    case ActiveState::Unknown:
+        return "unknown";
+    }
+    return "unknown";
+}
+
+std::string toString(Origin origin) {
+    switch (origin) {
+    case Origin::SystemdDefault:
+        return "systemd";
+    case Origin::Package:
+        return "package";
+    case Origin::AdminCreated:
+        return "admin";
+    case Origin::UserCreated:
+        return "user";
+    case Origin::Generated:
+        return "generated";
+    case Origin::Transient:
+        return "transient";
+    case Origin::Unowned:
+        return "unowned";
+    case Origin::Missing:
+        return "missing";
+    case Origin::Unknown:
+        return "unknown";
+    }
+    return "unknown";
+}
+
+std::string toString(EdgeKind kind) {
+    switch (kind) {
+    case EdgeKind::Requires:
+        return "requires";
+    case EdgeKind::Requisite:
+        return "requisite";
+    case EdgeKind::Wants:
+        return "wants";
+    case EdgeKind::BindsTo:
+        return "binds-to";
+    case EdgeKind::PartOf:
+        return "part-of";
+    case EdgeKind::Upholds:
+        return "upholds";
+    case EdgeKind::Triggers:
+        return "triggers";
+    }
+    return "unknown";
+}
+
+ActiveState activeStateFromString(const std::string& text) {
+    if (text == "active") {
+        return ActiveState::Active;
+    }
+    if (text == "inactive") {
+        return ActiveState::Inactive;
+    }
+    if (text == "failed") {
+        return ActiveState::Failed;
+    }
+    if (text == "activating") {
+        return ActiveState::Activating;
+    }
+    if (text == "deactivating") {
+        return ActiveState::Deactivating;
+    }
+    // "refreshing" is systemd's reload variant for mount/extension images.
+    if (text == "reloading" || text == "refreshing") {
+        return ActiveState::Reloading;
+    }
+    return ActiveState::Unknown;
+}
+
+std::vector<Origin> allOrigins() {
+    return {Origin::SystemdDefault, Origin::Package,   Origin::AdminCreated,
+            Origin::UserCreated,    Origin::Generated, Origin::Transient,
+            Origin::Unowned,        Origin::Missing,   Origin::Unknown};
+}
+
+std::string makeUnitKey(Manager manager, const std::string& name) {
+    return toString(manager) + ":" + name;
+}
+
+std::string unitTypeFromName(const std::string& name) {
+    std::size_t dot = name.rfind('.');
+    if (dot == std::string::npos) {
+        return "";
+    }
+    return name.substr(dot + 1);
+}
+
+Unit makeMissingPlaceholder(Manager manager, const std::string& name) {
+    Unit unit;
+    unit.key = makeUnitKey(manager, name);
+    unit.name = name;
+    unit.type = unitTypeFromName(name);
+    unit.manager = manager;
+    unit.description = "(referenced but not found)";
+    unit.loadState = "not-found";
+    unit.activeState = ActiveState::Inactive;
+    unit.subState = "dead";
+    unit.origin = Origin::Missing;
+    unit.isLoaded = false;
+    return unit;
+}
+
+bool isMasked(const Unit& unit) {
+    return unit.loadState == "masked";
+}
+
+} // namespace nyst
