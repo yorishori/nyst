@@ -222,7 +222,7 @@ ftxui::Elements timingFields(const Unit& unit, const UnitGraph& graph) {
     if (isActive && unit.activeEnterUsec != 0) {
         fields.push_back(
             field("active", "for " + formatRoughSpan(monotonicAgeUsec(unit.activeEnterUsec)) +
-                                "  (since " + formatSinceBoot(unit.activeEnterUsec) + ")"));
+                                ", since " + formatSinceBoot(unit.activeEnterUsec)));
     }
     bool wentInactive =
         unit.activeState == ActiveState::Inactive || unit.activeState == ActiveState::Failed;

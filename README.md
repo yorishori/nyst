@@ -86,8 +86,12 @@ Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 ## Details and journal
 
 - The **details** pane (right) shows everything known about the selected unit: description,
-  manager and user, aliases, load/active/file state, origin and package, fragment/source/drop-in
-  paths, edge counts, and any error hit while reading it.
+  manager and user, aliases, load/active/file state, runtime facts (result, exit status, PID,
+  memory, restarts, timer runs), origin and package, fragment/source/drop-in paths, edge counts,
+  and any error hit while reading it.
+- Its **timing** section shows when the unit last started (`+offset since kernel start (wall
+  clock)`, marked `after boot` if later than boot), how long that took, how long it has been
+  active, when it stopped, and whether a `Condition*=` check skipped it.
 - The **journal** pane (bottom) shows the unit's last 30 log lines and reloads whenever the
   selection changes. `J` hides/shows it (hidden = no journalctl calls). Mouse wheel scrolls it.
 - `L` opens the full journal in journalctl's pager (`journalctl [--user] -u <name> -e`); quit the
