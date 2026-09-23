@@ -4,9 +4,6 @@ A terminal UI that shows every systemd unit on the machine (system and user mana
 navigable dependency tree, with running state, owner, origin (systemd / package / admin / user /
 generated / transient / unowned / missing), and the kind of each dependency.
 
-> Status: milestone 5 (tree, search, filters, details, journal, actions). Live updates are
-> optional and not implemented.
-
 ## Build
 
 Dependencies (Arch Linux):
