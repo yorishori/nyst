@@ -129,6 +129,11 @@ void applyRuntimeProperties(const PropertyMap& properties, Unit& unit) {
         typedProperty<std::uint64_t>(properties, "InactiveEnterTimestampMonotonic", 0);
     unit.conditionUsec = typedProperty<std::uint64_t>(properties, "ConditionTimestampMonotonic", 0);
     unit.conditionResult = typedProperty<bool>(properties, "ConditionResult", true);
+    // Services call it TimeoutStartUSec; sockets, mounts, and swaps have one TimeoutUSec.
+    unit.startTimeoutUsec = typedProperty<std::uint64_t>(properties, "TimeoutStartUSec", 0);
+    if (unit.startTimeoutUsec == 0) {
+        unit.startTimeoutUsec = typedProperty<std::uint64_t>(properties, "TimeoutUSec", 0);
+    }
 }
 
 void appendError(Unit& unit, const std::string& message) {

@@ -217,6 +217,13 @@ ftxui::Elements timingFields(const Unit& unit, const UnitGraph& graph) {
     if (startup != 0) {
         fields.push_back(field("took", formatDuration(startup)));
     }
+    // Next to "took", this tells whether systemd cut a slow start short or the program
+    // gave up by itself.
+    if (unit.startTimeoutUsec == kNoTimeout) {
+        fields.push_back(field("timeout", "none (waits forever)"));
+    } else if (unit.startTimeoutUsec != 0) {
+        fields.push_back(field("timeout", formatDuration(unit.startTimeoutUsec)));
+    }
     bool isActive =
         unit.activeState == ActiveState::Active || unit.activeState == ActiveState::Reloading;
     if (isActive && unit.activeEnterUsec != 0) {

@@ -183,6 +183,7 @@ void copyRuntimeState(const Unit& from, Unit& to) {
     to.inactiveEnterUsec = from.inactiveEnterUsec;
     to.conditionUsec = from.conditionUsec;
     to.conditionResult = from.conditionResult;
+    to.startTimeoutUsec = from.startTimeoutUsec;
 }
 
 // Requisite= only checks that the target is already running, and PartOf=/Triggers=

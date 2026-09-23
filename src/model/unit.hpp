@@ -43,6 +43,9 @@ struct Edge {
     EdgeKind kind = EdgeKind::Wants;
 };
 
+/// Unit::startTimeoutUsec value meaning "no timeout" (systemd's "infinity").
+const std::uint64_t kNoTimeout = UINT64_MAX;
+
 struct Unit {
     std::string key;  // "<manager>:<name>", e.g. "system:sshd.service"; unique
     std::string name; // "sshd.service"
@@ -80,6 +83,8 @@ struct Unit {
     std::uint64_t inactiveEnterUsec = 0; // monotonic time it last went back to inactive
     std::uint64_t conditionUsec = 0;     // monotonic time its conditions were last checked
     bool conditionResult = true;         // false if a Condition*= check skipped the unit
+    std::uint64_t startTimeoutUsec = 0;  // how long systemd lets a start take; 0 if unknown
+                                         // or not applicable, kNoTimeout if it waits forever
 
     // Diagnostics, filled in by UnitGraph::rebuildDiagnostics(). Names of active units that
     // pull this one in although it never started this boot; empty if nothing is suspicious.

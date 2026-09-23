@@ -90,7 +90,8 @@ Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
   memory, restarts, timer runs), origin and package, fragment/source/drop-in paths, edge counts,
   and any error hit while reading it.
 - Its **timing** section shows when the unit last started (`+offset since kernel start (wall
-  clock)`, marked `after boot` if later than boot), how long that took, how long it has been
+  clock)`, marked `after boot` if later than boot), how long that took and the start timeout
+  systemd allows (so you can tell a timeout from a program giving up), how long it has been
   active, when it stopped, and whether a `Condition*=` check skipped it.
 - The **journal** pane (bottom) shows the unit's last 30 log lines and reloads whenever the
   selection changes. `J` hides/shows it (hidden = no journalctl calls). Mouse wheel scrolls it.
