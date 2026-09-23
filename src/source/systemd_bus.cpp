@@ -167,6 +167,8 @@ void applyWhatItRuns(const PropertyMap& properties, Unit& unit) {
     if (!unit.workingDirectory.empty() && unit.workingDirectory[0] == '!') {
         unit.workingDirectory = unit.workingDirectory.substr(1) + " (ok if missing)";
     }
+    unit.restartPolicy = stringProperty(properties, "Restart");
+    unit.restartDelayUsec = typedProperty<std::uint64_t>(properties, "RestartUSec", 0);
     for (const ListenRow& row : typedProperty<std::vector<ListenRow>>(properties, "Listen", {})) {
         unit.listenAddresses.push_back(std::get<0>(row) + " " + std::get<1>(row));
     }

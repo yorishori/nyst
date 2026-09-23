@@ -176,6 +176,17 @@ std::string mainProcessOutcome(const Unit& unit) {
     }
 }
 
+/// "on-failure, after 0.100s", "always, immediately", or "never" for Restart=no.
+std::string restartPolicyText(const Unit& unit) {
+    if (unit.restartPolicy == "no") {
+        return "never";
+    }
+    if (unit.restartDelayUsec == 0) {
+        return unit.restartPolicy + ", immediately";
+    }
+    return unit.restartPolicy + ", after " + formatDuration(unit.restartDelayUsec);
+}
+
 /// Only the facts that apply to this unit, so an idle target shows an empty section.
 ftxui::Elements runtimeFields(const Unit& unit) {
     ftxui::Elements fields;
@@ -193,6 +204,9 @@ ftxui::Elements runtimeFields(const Unit& unit) {
     }
     if (unit.memoryBytes != 0) {
         fields.push_back(field("memory", formatBytes(unit.memoryBytes)));
+    }
+    if (!unit.restartPolicy.empty()) {
+        fields.push_back(field("restart", restartPolicyText(unit)));
     }
     if (unit.restartCount != 0) {
         fields.push_back(field("restarts", std::to_string(unit.restartCount),
