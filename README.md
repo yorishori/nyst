@@ -4,7 +4,7 @@ A terminal UI that shows every systemd unit on the machine (system and user mana
 navigable dependency tree, with running state, owner, origin (systemd / package / admin / user /
 generated / transient / unowned / missing), and the kind of each dependency.
 
-> Status: milestone 1 (data layer + `--dump`). The TUI arrives in milestone 2.
+> Status: milestone 2 (tree view). Search/filters, details/journal, and actions are next.
 
 ## Build
 
@@ -14,13 +14,35 @@ Dependencies (Arch Linux):
 sudo pacman -S --needed cmake gcc pkgconf sdbus-cpp pacman
 ```
 
-FTXUI is not in the official repos. It will be fetched and pinned by CMake once the UI lands.
+FTXUI is not in the official repos, so CMake fetches release `v7.0.3` on the first configure
+(needs `git` and network access once per build directory).
 
 ```sh
 cmake -S . -B build
 cmake --build build -j
-./build/nyst --dump
+./build/nyst          # interactive tree
+./build/nyst --dump   # data layer only
 ```
+
+## The tree
+
+- **Forward** (default): `System` and `User (<name>)` are the two `default.target`s. Children are
+  what a unit pulls in (`requires`, `wants`, ...). Units no walk from either root reaches are under
+  *Not reachable from default.target*; unit files systemd has not loaded are under *Not loaded*.
+- **Reverse** (`d`): a flat list of every unit, failed first. Children are who needs the unit
+  (`required-by`, `wanted-by`, ...).
+- `↻` marks a unit that already appears above it on the same branch (a dependency cycle).
+
+Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
+
+| Icon | Meaning | Marker | Meaning |
+|---|---|---|---|
+| `●` green | active | `⚙` | drop-in outside `/usr/lib` |
+| `○` dim | inactive | `⇪` | `/etc` file shadows a packaged unit |
+| `✗` red | failed | `↻` | cycle, not expandable |
+| `◐` yellow | transitioning | | |
+| `?` | missing | | |
+| `⊘` | masked | | |
 
 ## `--dump`
 
@@ -74,22 +96,30 @@ Logs load timings, unit counts, bus and alpm failures, and (later) every command
 A normal user can read system unit logs only if they belong to the `wheel`, `adm`, or
 `systemd-journal` group.
 
-## Keybindings (planned)
+## Keybindings
+
+Working now:
 
 | Key | Action |
 |---|---|
 | `↑/↓`, `j/k` | move cursor |
-| `←/→`, `h/l` | collapse / expand |
+| `PgUp/PgDn`, `Home/End`, `g/G` | move by page / to start or end |
+| `←/→`, `h/l` | collapse / expand (`←` on a collapsed row jumps to its parent) |
 | `Space` | toggle expand |
 | `Enter` / `Backspace` | focus on unit / go back |
-| `/` | search (`Esc` clears) |
 | `d` | toggle tree direction |
+| `u` | reload all data from systemd |
+| `q` | quit |
+
+Planned:
+
+| Key | Action |
+|---|---|
+| `/` | search (`Esc` clears) |
 | `F` | filter panel |
 | `p` | problems preset |
 | `J` / `L` | journal pane / full journal in pager |
 | `s` / `S` | start / stop |
 | `r` / `R` | restart / reload |
 | `e` / `E` | enable / disable |
-| `u` | reload all data |
 | `?` | help |
-| `q` | quit |

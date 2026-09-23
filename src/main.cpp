@@ -1,6 +1,7 @@
 // Entry point: parses arguments and runs either the --dump report or the TUI.
 #include "model/unit_graph.hpp"
 #include "source/loader.hpp"
+#include "ui/app.hpp"
 
 #include <iostream>
 #include <string>
@@ -56,7 +57,8 @@ int runDump() {
 
 void printUsage() {
     std::cout << "usage: nyst [--dump]\n"
-                 "  --dump   print every unit as a tab-separated line and exit\n";
+                 "  (no arguments)  start the interactive tree\n"
+                 "  --dump          print every unit as a tab-separated line and exit\n";
 }
 
 } // namespace
@@ -70,8 +72,9 @@ int main(int argc, char** argv) {
         printUsage();
         return 0;
     }
-
-    // The TUI arrives in milestone 2; until then only --dump is available.
-    printUsage();
-    return argument.empty() ? 0 : 1;
+    if (!argument.empty()) {
+        printUsage();
+        return 1;
+    }
+    return nyst::runTui();
 }
