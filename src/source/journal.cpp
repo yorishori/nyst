@@ -1,38 +1,14 @@
 // Reads a unit's log lines by running journalctl; the only module that knows how.
 #include "source/journal.hpp"
 
+#include "util/command.hpp"
 #include "util/debug_log.hpp"
 
 #include <cstdio>
-#include <cstdlib>
-#include <sys/wait.h>
 
 namespace nyst {
 
 namespace {
-
-/// Turns a wait status from pclose/system into an exit code (-1 if killed by a signal).
-int exitCodeOf(int waitStatus) {
-    return WIFEXITED(waitStatus) ? WEXITSTATUS(waitStatus) : -1;
-}
-
-// Unit names are already restricted by systemd, but they reach a shell here,
-// so anything outside this set is refused rather than escaped.
-bool isSafeUnitName(const std::string& name) {
-    if (name.empty()) {
-        return false;
-    }
-    for (char character : name) {
-        bool allowed =
-            (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
-            (character >= '0' && character <= '9') || character == ':' || character == '_' ||
-            character == '.' || character == '@' || character == '-' || character == '\\';
-        if (!allowed) {
-            return false;
-        }
-    }
-    return true;
-}
 
 /// "journalctl [--user] -u '<name>'". Single quotes are safe because the name was checked.
 std::string baseCommand(const Unit& unit) {
@@ -90,7 +66,7 @@ std::vector<std::string> readCommandOutput(const std::string& command) {
 } // namespace
 
 std::vector<std::string> recentLogLines(const Unit& unit, int count) {
-    if (!isSafeUnitName(unit.name)) {
+    if (!isShellSafeUnitName(unit.name)) {
         return {"refusing to query the journal: unexpected characters in unit name"};
     }
     // stderr is merged so permission problems show up in the pane instead of vanishing.
@@ -101,12 +77,10 @@ std::vector<std::string> recentLogLines(const Unit& unit, int count) {
 }
 
 std::string showFullJournal(const Unit& unit) {
-    if (!isSafeUnitName(unit.name)) {
+    if (!isShellSafeUnitName(unit.name)) {
         return "refusing to open the journal: unexpected characters in unit name";
     }
-    std::string command = baseCommand(unit) + " -e";
-    debugLog("run: " + command);
-    int status = exitCodeOf(std::system(command.c_str()));
+    int status = runCommand(baseCommand(unit) + " -e");
     if (status != 0) {
         return "journalctl exited with status " + std::to_string(status);
     }

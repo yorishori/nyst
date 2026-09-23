@@ -1,6 +1,8 @@
 // Filter state, unit matching, and the filter panel component.
 #include "ui/filters.hpp"
 
+#include "ui/button_style.hpp"
+
 #include <ftxui/component/component.hpp>
 #include <ftxui/dom/elements.hpp>
 
@@ -104,17 +106,6 @@ int countUnchecked(const std::map<std::string, bool>& values) {
         }
     }
     return unchecked;
-}
-
-// ftxui's Ascii button only shows brackets while focused; always showing them makes
-// the buttons recognisable as clickable.
-ftxui::ButtonOption bracketButtonStyle() {
-    ftxui::ButtonOption option;
-    option.transform = [](const ftxui::EntryState& state) {
-        ftxui::Element label = ftxui::text("[" + state.label + "]");
-        return state.focused ? label | ftxui::inverted : label | ftxui::color(ftxui::Color::Cyan);
-    };
-    return option;
 }
 
 bool allChecked(const std::map<std::string, bool>& values) {

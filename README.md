@@ -4,7 +4,8 @@ A terminal UI that shows every systemd unit on the machine (system and user mana
 navigable dependency tree, with running state, owner, origin (systemd / package / admin / user /
 generated / transient / unowned / missing), and the kind of each dependency.
 
-> Status: milestone 4 (tree, search, filters, details, journal). Actions are next.
+> Status: milestone 5 (tree, search, filters, details, journal, actions). Live updates are
+> optional and not implemented.
 
 ## Build
 
@@ -54,7 +55,21 @@ Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 - `L` opens the full journal in journalctl's pager (`journalctl [--user] -u <name> -e`); quit the
   pager to come back.
 
+## Actions
 
+`s`/`S` start/stop, `r` restart, `R` reload, `e`/`E` enable/disable the selected unit.
+
+1. A dialog asks first, e.g. `Restart sshd.service (system)?` (`y`, or click `[yes]`; `n`/`Esc`,
+   or a click outside, cancels; `Enter` alone picks the focused button, which starts on `[no]`).
+2. nyst leaves the fullscreen view and runs `systemctl [--user] <verb> <name>` in your terminal,
+   so polkit can ask for a password there.
+3. It prints the result and waits for `Enter`, then reloads everything. The status bar shows
+   `restart sshd.service: done` or `...: failed (exit N)`.
+
+Only loaded units can be started, stopped, restarted, or reloaded; enable/disable also work on
+units that are only known as unit files. Missing units offer no actions. `?` shows every key.
+
+## Search and filters
 
 - `/` searches name and description (case-insensitive). `Enter` keeps the search, `Esc` clears it.
 - `F` opens the filter panel: unit type, state, manager, origin, and "only locally modified" /
@@ -78,6 +93,7 @@ units at once, use the reverse direction (`d`), whose top level is a flat, filte
 - **Header:** click the search box to type, `[problems ...]` to toggle the problems view,
   `[dir: ...]` to flip the direction, and `[filters: N off]` to open the filter panel.
 - **Filter panel:** click checkboxes and buttons; click outside the panel or `[close]` to close it.
+- **Dialogs:** click `[yes]`/`[no]`; a click outside the confirmation cancels, any click closes help.
 
 ## `--dump`
 
@@ -124,7 +140,8 @@ NYST_DEBUG=1 ./build/nyst --dump > /dev/null
 cat ~/.cache/nyst/debug.log
 ```
 
-Logs load timings, unit counts, bus and alpm failures, and (later) every command executed.
+Logs load timings, unit counts, bus and alpm failures, and every command executed (with its
+exit code for actions and the full-journal pager).
 
 ## Journal access
 
@@ -133,7 +150,7 @@ A normal user can read system unit logs only if they belong to the `wheel`, `adm
 
 ## Keybindings
 
-Working now:
+All keys:
 
 | Key | Action |
 |---|---|
@@ -148,14 +165,9 @@ Working now:
 | `p` | problems preset |
 | `J` | show / hide the journal pane |
 | `L` | full journal in a pager |
+| `s` / `S` | start / stop (asks first) |
+| `r` / `R` | restart / reload (asks first) |
+| `e` / `E` | enable / disable (asks first) |
 | `u` | reload all data from systemd |
+| `?` | help overlay |
 | `q` | quit |
-
-Planned:
-
-| Key | Action |
-|---|---|
-| `s` / `S` | start / stop |
-| `r` / `R` | restart / reload |
-| `e` / `E` | enable / disable |
-| `?` | help |

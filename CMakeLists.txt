@@ -29,6 +29,7 @@ FetchContent_MakeAvailable(ftxui)
 
 add_executable(nyst
     src/main.cpp
+    src/util/command.cpp
     src/util/debug_log.cpp
     src/model/unit.cpp
     src/model/unit_graph.cpp
@@ -37,8 +38,11 @@ add_executable(nyst
     src/source/classifier.cpp
     src/source/loader.cpp
     src/source/journal.cpp
+    src/source/actions.cpp
     src/ui/app.cpp
+    src/ui/button_style.cpp
     src/ui/details_pane.cpp
+    src/ui/dialogs.cpp
     src/ui/filters.cpp
     src/ui/journal_pane.cpp
     src/ui/tree_view.cpp

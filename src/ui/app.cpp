@@ -2,9 +2,11 @@
 #include "ui/app.hpp"
 
 #include "model/unit_graph.hpp"
+#include "source/actions.hpp"
 #include "source/journal.hpp"
 #include "source/loader.hpp"
 #include "ui/details_pane.hpp"
+#include "ui/dialogs.hpp"
 #include "ui/filters.hpp"
 #include "ui/journal_pane.hpp"
 #include "ui/tree_view.hpp"
@@ -15,6 +17,7 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 
+#include <cctype>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -26,7 +29,7 @@ namespace {
 const int kPageSize = 20;
 
 /// Which part of the screen receives key presses.
-enum class InputMode { Tree, Search, FilterPanel };
+enum class InputMode { Tree, Search, FilterPanel, ConfirmAction, Help };
 
 std::string toString(InputMode mode) {
     switch (mode) {
@@ -36,6 +39,10 @@ std::string toString(InputMode mode) {
         return "search";
     case InputMode::FilterPanel:
         return "filter-panel";
+    case InputMode::ConfirmAction:
+        return "confirm-action";
+    case InputMode::Help:
+        return "help";
     }
     return "unknown";
 }
@@ -52,6 +59,12 @@ private:
     bool handleTreeModeEvent(const ftxui::Event& event);
     bool handleSearchEvent(const ftxui::Event& event);
     bool handleFilterPanelEvent(const ftxui::Event& event);
+    bool handleConfirmEvent(const ftxui::Event& event);
+    bool handleHelpEvent(const ftxui::Event& event);
+    bool handleActionKey(const ftxui::Event& event);
+    void askToRunAction(UnitAction action);
+    void runPendingAction();
+    void setNotice(const std::string& message, bool isError);
     bool handleMovementKey(const ftxui::Event& event);
     bool handleTreeKey(const ftxui::Event& event);
     bool handlePaneKey(const ftxui::Event& event);
@@ -65,6 +78,7 @@ private:
     ftxui::Element renderSearchBox();
     ftxui::Element renderDetailsPane() const;
     ftxui::Element renderStatusBar() const;
+    ftxui::Element addOverlay(ftxui::Element main);
     std::vector<std::string> keyHints() const;
 
     UnitGraph graph_;
@@ -76,7 +90,14 @@ private:
     // Neither component is attached to the screen: events are routed by mode by hand.
     ftxui::Component searchInput_;
     ftxui::Component filterPanel_;
+    ftxui::Component confirmDialog_; // rebuilt every time it opens
     ftxui::ScreenInteractive* screen_ = nullptr;
+
+    UnitAction pendingAction_ = UnitAction::Start;
+    std::string pendingUnitKey_;
+    // Outcome of the last action or command, shown in the status bar until replaced.
+    std::string noticeMessage_;
+    bool noticeIsError_ = false;
 
     // Screen areas from the last frame, for mouse hit-testing.
     ftxui::Box searchBoxArea_;
@@ -84,6 +105,7 @@ private:
     ftxui::Box directionLabelArea_;
     ftxui::Box filtersLabelArea_;
     ftxui::Box filterPanelArea_;
+    ftxui::Box confirmDialogArea_;
 };
 
 bool isLeftClick(const ftxui::Mouse& mouse) {
@@ -92,6 +114,33 @@ bool isLeftClick(const ftxui::Mouse& mouse) {
 
 bool isCharacter(const ftxui::Event& event, char character) {
     return event == ftxui::Event::Character(character);
+}
+
+/// Maps s/S/r/R/e/E to their action. Returns false for any other event.
+bool actionForKey(const ftxui::Event& event, UnitAction& action) {
+    if (isCharacter(event, 's')) {
+        action = UnitAction::Start;
+    } else if (isCharacter(event, 'S')) {
+        action = UnitAction::Stop;
+    } else if (isCharacter(event, 'r')) {
+        action = UnitAction::Restart;
+    } else if (isCharacter(event, 'R')) {
+        action = UnitAction::Reload;
+    } else if (isCharacter(event, 'e')) {
+        action = UnitAction::Enable;
+    } else if (isCharacter(event, 'E')) {
+        action = UnitAction::Disable;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+std::string capitalized(std::string text) {
+    if (!text.empty()) {
+        text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
+    }
+    return text;
 }
 
 Application::Application() {
@@ -140,7 +189,57 @@ void Application::openFullJournal() {
     std::string error;
     screen_->WithRestoredIO([&error, unit] { error = showFullJournal(*unit); })();
     if (!error.empty()) {
-        statusMessage_ = error;
+        setNotice(error, true);
+    }
+}
+
+void Application::setNotice(const std::string& message, bool isError) {
+    noticeMessage_ = message;
+    noticeIsError_ = isError;
+}
+
+void Application::askToRunAction(UnitAction action) {
+    const Unit* unit = selectedUnit();
+    if (unit == nullptr) {
+        setNotice("select a unit first", true);
+        return;
+    }
+    std::string reason = whyActionUnavailable(*unit, action);
+    if (!reason.empty()) {
+        setNotice(reason, true);
+        return;
+    }
+    pendingAction_ = action;
+    pendingUnitKey_ = unit->key;
+    std::string question =
+        capitalized(toString(action)) + " " + unit->name + " (" + toString(unit->manager) + ")?";
+    confirmDialog_ = makeConfirmDialog(
+        question, [this] { runPendingAction(); }, [this] { setMode(InputMode::Tree); });
+    setMode(InputMode::ConfirmAction);
+}
+
+// Leaves the fullscreen UI so systemctl (and polkit's password prompt) own the terminal.
+// Everything is reloaded afterwards: simpler than refreshing one unit, and an action can
+// change the state of the units around it too.
+void Application::runPendingAction() {
+    setMode(InputMode::Tree);
+    const Unit* unit = graph_.find(pendingUnitKey_);
+    if (unit == nullptr) {
+        return;
+    }
+    UnitAction action = pendingAction_;
+    std::string name = unit->name;
+    int exitCode = -1;
+    screen_->WithRestoredIO(
+        [&exitCode, unit, action] { exitCode = runActionInTerminal(*unit, action); })();
+
+    reloadUnits();
+    if (exitCode == 0) {
+        setNotice(toString(action) + " " + name + ": done", false);
+    } else {
+        setNotice(toString(action) + " " + name + ": failed (exit " + std::to_string(exitCode) +
+                      ")",
+                  true);
     }
 }
 
@@ -158,15 +257,61 @@ bool Application::handleEvent(const ftxui::Event& event) {
         return handleSearchEvent(event);
     case InputMode::FilterPanel:
         return handleFilterPanelEvent(event);
+    case InputMode::ConfirmAction:
+        return handleConfirmEvent(event);
+    case InputMode::Help:
+        return handleHelpEvent(event);
     case InputMode::Tree:
         break;
     }
     return handleTreeModeEvent(event);
 }
 
+bool Application::handleConfirmEvent(const ftxui::Event& event) {
+    if (isCharacter(event, 'y') || isCharacter(event, 'Y')) {
+        runPendingAction();
+        return true;
+    }
+    if (isCharacter(event, 'n') || isCharacter(event, 'N') || event == ftxui::Event::Escape) {
+        setMode(InputMode::Tree);
+        return true;
+    }
+    return confirmDialog_->OnEvent(event);
+}
+
+bool Application::handleHelpEvent(const ftxui::Event& event) {
+    if (event == ftxui::Event::Escape || isCharacter(event, '?') || isCharacter(event, 'q')) {
+        setMode(InputMode::Tree);
+    }
+    // Swallow everything else so keys don't act on the tree hidden behind the help.
+    return true;
+}
+
+bool Application::handleActionKey(const ftxui::Event& event) {
+    UnitAction action = UnitAction::Start;
+    if (!actionForKey(event, action)) {
+        return false;
+    }
+    askToRunAction(action);
+    return true;
+}
+
 // Takes the event by value: ftxui only exposes the mouse data through a non-const accessor.
 bool Application::handleMouseEvent(ftxui::Event event) {
     const ftxui::Mouse& mouse = event.mouse();
+    if (mode_ == InputMode::Help) {
+        if (isLeftClick(mouse)) {
+            setMode(InputMode::Tree);
+        }
+        return true;
+    }
+    if (mode_ == InputMode::ConfirmAction) {
+        if (isLeftClick(mouse) && !confirmDialogArea_.Contain(mouse.x, mouse.y)) {
+            setMode(InputMode::Tree);
+            return true;
+        }
+        return confirmDialog_->OnEvent(event);
+    }
     if (mode_ == InputMode::FilterPanel) {
         if (isLeftClick(mouse) && !filterPanelArea_.Contain(mouse.x, mouse.y)) {
             setMode(InputMode::Tree);
@@ -248,6 +393,10 @@ bool Application::handleTreeModeEvent(const ftxui::Event& event) {
         filters_.problemsOnly = !filters_.problemsOnly;
         return true;
     }
+    if (isCharacter(event, '?')) {
+        setMode(InputMode::Help);
+        return true;
+    }
     if (isCharacter(event, 'q')) {
         screen_->Exit();
         return true;
@@ -256,7 +405,8 @@ bool Application::handleTreeModeEvent(const ftxui::Event& event) {
         reloadUnits();
         return true;
     }
-    return handleMovementKey(event) || handleTreeKey(event) || handlePaneKey(event);
+    return handleMovementKey(event) || handleTreeKey(event) || handlePaneKey(event) ||
+           handleActionKey(event);
 }
 
 bool Application::handlePaneKey(const ftxui::Event& event) {
@@ -328,12 +478,27 @@ ftxui::Element Application::render() {
         sections.push_back(journal_.render());
     }
     sections.push_back(renderStatusBar());
-    Element main = vbox(sections);
-    if (mode_ != InputMode::FilterPanel) {
+    return addOverlay(vbox(sections));
+}
+
+ftxui::Element Application::addOverlay(ftxui::Element main) {
+    using namespace ftxui;
+    Element overlay;
+    switch (mode_) {
+    case InputMode::FilterPanel:
+        overlay = filterPanel_->Render() | reflect(filterPanelArea_);
+        break;
+    case InputMode::ConfirmAction:
+        overlay = confirmDialog_->Render() | reflect(confirmDialogArea_);
+        break;
+    case InputMode::Help:
+        overlay = renderHelpOverlay();
+        break;
+    case InputMode::Tree:
+    case InputMode::Search:
         return main;
     }
-    Element panel = filterPanel_->Render() | reflect(filterPanelArea_) | clear_under | center;
-    return dbox({main, panel});
+    return dbox({main, overlay | clear_under | center});
 }
 
 ftxui::Element Application::renderDetailsPane() const {
@@ -387,6 +552,10 @@ ftxui::Element Application::renderHeader() {
 ftxui::Element Application::renderStatusBar() const {
     using namespace ftxui;
     Elements items = {text(statusMessage_)};
+    if (!noticeMessage_.empty()) {
+        Color noticeColor = noticeIsError_ ? Color::Red : Color::Green;
+        items.push_back(text(noticeMessage_) | color(noticeColor) | bold);
+    }
     for (const std::string& hint : keyHints()) {
         items.push_back(text(hint) | dim);
     }
@@ -401,11 +570,16 @@ std::vector<std::string> Application::keyHints() const {
         return {"Enter keep", "Esc clear", "↑↓ move"};
     case InputMode::FilterPanel:
         return {"Space/click toggle", "p problems", "Esc/click outside close"};
+    case InputMode::ConfirmAction:
+        return {"y yes", "n/Esc no"};
+    case InputMode::Help:
+        return {"Esc/?/click close"};
     case InputMode::Tree:
         break;
     }
-    return {"/ search",  "F filters",  "p problems", "d direction", "Enter focus",
-            "J journal", "L full log", "u reload",   "q quit"};
+    return {"/ search",  "F filters",  "p problems",     "d direction",        "Enter focus",
+            "J journal", "L full log", "s/S start/stop", "r/R restart/reload", "e/E enable/disable",
+            "u reload",  "? help",     "q quit"};
 }
 
 } // namespace

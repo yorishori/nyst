@@ -77,4 +77,8 @@ Unit makeMissingPlaceholder(Manager manager, const std::string& name);
 
 bool isMasked(const Unit& unit);
 
+/// True if the name only uses [A-Za-z0-9:_.@\-\\], so it can be single-quoted into a
+/// shell command. systemd already restricts names; this refuses anything unexpected.
+bool isShellSafeUnitName(const std::string& name);
+
 } // namespace nyst

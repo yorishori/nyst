@@ -137,4 +137,20 @@ bool isMasked(const Unit& unit) {
     return unit.loadState == "masked";
 }
 
+bool isShellSafeUnitName(const std::string& name) {
+    if (name.empty()) {
+        return false;
+    }
+    for (char character : name) {
+        bool allowed =
+            (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+            (character >= '0' && character <= '9') || character == ':' || character == '_' ||
+            character == '.' || character == '@' || character == '-' || character == '\\';
+        if (!allowed) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace nyst
