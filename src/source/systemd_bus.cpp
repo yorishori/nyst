@@ -6,6 +6,7 @@
 #include <sdbus-c++/sdbus-c++.h>
 
 #include <cstdint>
+#include <ctime>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -18,8 +19,9 @@ namespace {
 const char* const kSystemdService = "org.freedesktop.systemd1";
 const char* const kManagerPath = "/org/freedesktop/systemd1";
 const char* const kManagerInterface = "org.freedesktop.systemd1.Manager";
-const char* const kUnitInterface = "org.freedesktop.systemd1.Unit";
-const char* const kServiceInterface = "org.freedesktop.systemd1.Service";
+// An empty interface name makes GetAll return the properties of every interface at once:
+// the common Unit ones plus the type-specific ones (Service, Timer, ...).
+const char* const kAllInterfaces = "";
 
 using PropertyMap = std::map<sdbus::PropertyName, sdbus::Variant>;
 
@@ -43,20 +45,21 @@ std::unique_ptr<sdbus::IProxy> makeProxy(sdbus::IConnection& connection, const s
                               sdbus::ObjectPath{path});
 }
 
-std::string stringProperty(const PropertyMap& properties, const char* name) {
+/// Reads a property of D-Bus type T, or returns fallback if it is missing or has another type.
+template <typename T> T typedProperty(const PropertyMap& properties, const char* name, T fallback) {
     auto it = properties.find(sdbus::PropertyName{name});
-    if (it == properties.end() || !it->second.containsValueOfType<std::string>()) {
-        return "";
+    if (it == properties.end() || !it->second.containsValueOfType<T>()) {
+        return fallback;
     }
-    return it->second.get<std::string>();
+    return it->second.get<T>();
+}
+
+std::string stringProperty(const PropertyMap& properties, const char* name) {
+    return typedProperty<std::string>(properties, name, "");
 }
 
 std::vector<std::string> stringListProperty(const PropertyMap& properties, const char* name) {
-    auto it = properties.find(sdbus::PropertyName{name});
-    if (it == properties.end() || !it->second.containsValueOfType<std::vector<std::string>>()) {
-        return {};
-    }
-    return it->second.get<std::vector<std::string>>();
+    return typedProperty<std::vector<std::string>>(properties, name, {});
 }
 
 void appendEdges(const PropertyMap& properties, const char* propertyName, EdgeKind kind,
@@ -85,6 +88,54 @@ void applyUnitProperties(const PropertyMap& properties, Unit& unit) {
     appendEdges(properties, "Triggers", EdgeKind::Triggers, unit);
 }
 
+std::uint64_t monotonicNowUsec() {
+    timespec now{};
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return static_cast<std::uint64_t>(now.tv_sec) * 1000000 +
+           static_cast<std::uint64_t>(now.tv_nsec) / 1000;
+}
+
+std::uint64_t realtimeNowUsec() {
+    timespec now{};
+    clock_gettime(CLOCK_REALTIME, &now);
+    return static_cast<std::uint64_t>(now.tv_sec) * 1000000 +
+           static_cast<std::uint64_t>(now.tv_nsec) / 1000;
+}
+
+// Timers based on OnBootSec= and friends only report a monotonic next elapse;
+// convert it to wall-clock time so the UI has one kind of timestamp to show.
+std::uint64_t nextElapseAsRealtime(const PropertyMap& properties) {
+    std::uint64_t realtime = typedProperty<std::uint64_t>(properties, "NextElapseUSecRealtime", 0);
+    if (realtime != 0) {
+        return realtime;
+    }
+    std::uint64_t monotonic =
+        typedProperty<std::uint64_t>(properties, "NextElapseUSecMonotonic", 0);
+    if (monotonic == 0) {
+        return 0;
+    }
+    return realtimeNowUsec() + monotonic - monotonicNowUsec();
+}
+
+void applyRuntimeProperties(const PropertyMap& properties, Unit& unit) {
+    unit.result = stringProperty(properties, "Result");
+    unit.mainExitKind = typedProperty<std::int32_t>(properties, "ExecMainCode", 0);
+    unit.mainExitStatus = typedProperty<std::int32_t>(properties, "ExecMainStatus", 0);
+    unit.restartCount = typedProperty<std::uint32_t>(properties, "NRestarts", 0);
+    unit.mainPid = typedProperty<std::uint32_t>(properties, "MainPID", 0);
+    // systemd reports "unknown" as UINT64_MAX.
+    std::uint64_t memory = typedProperty<std::uint64_t>(properties, "MemoryCurrent", 0);
+    unit.memoryBytes = memory == UINT64_MAX ? 0 : memory;
+    unit.lastTriggerUsec = typedProperty<std::uint64_t>(properties, "LastTriggerUSec", 0);
+    unit.nextElapseUsec = nextElapseAsRealtime(properties);
+    unit.activatingUsec =
+        typedProperty<std::uint64_t>(properties, "InactiveExitTimestampMonotonic", 0);
+    unit.activeEnterUsec =
+        typedProperty<std::uint64_t>(properties, "ActiveEnterTimestampMonotonic", 0);
+    unit.conditionUsec = typedProperty<std::uint64_t>(properties, "ConditionTimestampMonotonic", 0);
+    unit.conditionResult = typedProperty<bool>(properties, "ConditionResult", true);
+}
+
 void appendError(Unit& unit, const std::string& message) {
     if (!unit.error.empty()) {
         unit.error += "; ";
@@ -103,13 +154,12 @@ void applyAliases(const PropertyMap& properties, Unit& unit) {
 void readUnitDetails(sdbus::IConnection& connection, const std::string& objectPath, Unit& unit) {
     try {
         auto proxy = makeProxy(connection, objectPath);
-        PropertyMap properties = proxy->getAllProperties().onInterface(kUnitInterface);
+        PropertyMap properties = proxy->getAllProperties().onInterface(kAllInterfaces);
         applyUnitProperties(properties, unit);
         applyAliases(properties, unit);
-
+        applyRuntimeProperties(properties, unit);
         if (unit.manager == Manager::System && unit.type == "service") {
-            sdbus::Variant user = proxy->getProperty("User").onInterface(kServiceInterface);
-            unit.runAsUser = user.get<std::string>();
+            unit.runAsUser = stringProperty(properties, "User");
         }
     } catch (const sdbus::Error& error) {
         appendError(unit, "reading properties failed: " + error.getMessage());

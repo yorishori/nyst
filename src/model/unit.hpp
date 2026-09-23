@@ -1,6 +1,7 @@
 // Unit struct, its enums, and their string conversions.
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -64,6 +65,20 @@ struct Unit {
     bool isLoaded = false;            // false = only known from ListUnitFiles
     std::vector<Edge> dependencies;   // forward edges
     std::string error;                // non-empty if reading this unit partially failed
+
+    // Runtime details. Zero or empty when unknown or not applicable to the unit type.
+    std::string result;                // success, exit-code, timeout, oom-kill, ...
+    int mainExitKind = 0;              // ExecMainCode: 1 exited, 2 killed, 3 dumped core
+    int mainExitStatus = 0;            // exit code, or signal number when killed/dumped
+    std::uint32_t restartCount = 0;    // automatic restarts (services)
+    std::uint32_t mainPid = 0;         // running main process (services)
+    std::uint64_t memoryBytes = 0;     // current memory use of the unit's cgroup
+    std::uint64_t lastTriggerUsec = 0; // timers: wall clock, microseconds since the epoch
+    std::uint64_t nextElapseUsec = 0;  // timers: wall clock, microseconds since the epoch
+    std::uint64_t activatingUsec = 0;  // monotonic time it last left "inactive"
+    std::uint64_t activeEnterUsec = 0; // monotonic time it last became active
+    std::uint64_t conditionUsec = 0;   // monotonic time its conditions were last checked
+    bool conditionResult = true;       // false if a Condition*= check skipped the unit
 };
 
 /// Builds the unique graph key for a unit, e.g. "user:pipewire.service".

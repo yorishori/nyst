@@ -1,6 +1,8 @@
 // Renders every known fact about the selected unit.
 #include "ui/details_pane.hpp"
 
+#include "ui/format.hpp"
+
 #include <string>
 #include <vector>
 
@@ -16,8 +18,8 @@ bool isUtf8Continuation(char character) {
     return (static_cast<unsigned char>(character) & 0xC0) == 0x80;
 }
 
-/// Hard-wraps text at `width` bytes without splitting a UTF-8 character. Paths have
-/// no spaces, so word wrapping would not help.
+/// Wraps text at `width` bytes, preferring the last space in a line; text without spaces
+/// (paths) is cut hard, but never inside a UTF-8 character.
 std::vector<std::string> wrapText(const std::string& text, int width) {
     std::vector<std::string> lines;
     std::size_t start = 0;
@@ -25,6 +27,12 @@ std::vector<std::string> wrapText(const std::string& text, int width) {
         std::size_t end = std::min(text.size(), start + static_cast<std::size_t>(width));
         while (end < text.size() && end > start && isUtf8Continuation(text[end])) {
             --end;
+        }
+        std::size_t lastSpace = text.rfind(' ', end);
+        bool breakAtSpace =
+            end < text.size() && lastSpace != std::string::npos && lastSpace > start;
+        if (breakAtSpace) {
+            end = lastSpace + 1;
         }
         lines.push_back(text.substr(start, end - start));
         start = end;
@@ -150,6 +158,51 @@ ftxui::Elements originFields(const Unit& unit, const UnitGraph& graph) {
     return fields;
 }
 
+/// "exited with status 1", "killed by signal 9", or empty when the process never ran.
+std::string mainProcessOutcome(const Unit& unit) {
+    switch (unit.mainExitKind) {
+    case 1:
+        return "exited with status " + std::to_string(unit.mainExitStatus);
+    case 2:
+        return "killed by signal " + std::to_string(unit.mainExitStatus);
+    case 3:
+        return "dumped core (signal " + std::to_string(unit.mainExitStatus) + ")";
+    default:
+        return "";
+    }
+}
+
+/// Only the facts that apply to this unit, so an idle target shows an empty section.
+ftxui::Elements runtimeFields(const Unit& unit) {
+    ftxui::Elements fields;
+    if (!unit.result.empty()) {
+        ftxui::Decorator style =
+            unit.result == "success" ? ftxui::nothing : ftxui::color(ftxui::Color::Red);
+        fields.push_back(field("result", unit.result, style));
+    }
+    std::string outcome = mainProcessOutcome(unit);
+    if (!outcome.empty()) {
+        fields.push_back(field("main exit", outcome));
+    }
+    if (unit.mainPid != 0) {
+        fields.push_back(field("main pid", std::to_string(unit.mainPid)));
+    }
+    if (unit.memoryBytes != 0) {
+        fields.push_back(field("memory", formatBytes(unit.memoryBytes)));
+    }
+    if (unit.restartCount != 0) {
+        fields.push_back(field("restarts", std::to_string(unit.restartCount),
+                               ftxui::color(ftxui::Color::Yellow)));
+    }
+    if (unit.lastTriggerUsec != 0) {
+        fields.push_back(field("last run", formatWallClockWithDistance(unit.lastTriggerUsec)));
+    }
+    if (unit.nextElapseUsec != 0) {
+        fields.push_back(field("next run", formatWallClockWithDistance(unit.nextElapseUsec)));
+    }
+    return fields;
+}
+
 void appendAll(ftxui::Elements& target, const ftxui::Elements& source) {
     target.insert(target.end(), source.begin(), source.end());
 }
@@ -166,6 +219,7 @@ ftxui::Element renderDetails(const Unit* unit, const UnitGraph& graph) {
     appendAll(lines, identityFields(*unit));
     lines.push_back(separatorEmpty());
     appendAll(lines, stateFields(*unit));
+    appendAll(lines, runtimeFields(*unit));
     lines.push_back(separatorEmpty());
     appendAll(lines, originFields(*unit, graph));
     if (!unit->error.empty()) {

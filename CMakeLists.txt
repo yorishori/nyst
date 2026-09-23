@@ -44,6 +44,7 @@ add_executable(nyst
     src/ui/details_pane.cpp
     src/ui/dialogs.cpp
     src/ui/filters.cpp
+    src/ui/format.cpp
     src/ui/journal_pane.cpp
     src/ui/tree_view.cpp
 )
