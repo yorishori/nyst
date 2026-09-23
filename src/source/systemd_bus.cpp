@@ -33,13 +33,6 @@ using ListUnitsRow =
 /// One row of Manager.ListUnitFiles, signature (ss): path and state.
 using ListUnitFilesRow = sdbus::Struct<std::string, std::string>;
 
-std::unique_ptr<sdbus::IConnection> connectToManager(Manager manager) {
-    if (manager == Manager::System) {
-        return sdbus::createSystemBusConnection();
-    }
-    return sdbus::createSessionBusConnection();
-}
-
 std::unique_ptr<sdbus::IProxy> makeProxy(sdbus::IConnection& connection, const std::string& path) {
     return sdbus::createProxy(connection, sdbus::ServiceName{kSystemdService},
                               sdbus::ObjectPath{path});
@@ -153,16 +146,23 @@ void applyAliases(const PropertyMap& properties, Unit& unit) {
     }
 }
 
+PropertyMap readAllProperties(sdbus::IConnection& connection, const std::string& objectPath) {
+    auto proxy = makeProxy(connection, objectPath);
+    return proxy->getAllProperties().onInterface(kAllInterfaces);
+}
+
+void applyAllProperties(const PropertyMap& properties, Unit& unit) {
+    applyUnitProperties(properties, unit);
+    applyAliases(properties, unit);
+    applyRuntimeProperties(properties, unit);
+    if (unit.manager == Manager::System && unit.type == "service") {
+        unit.runAsUser = stringProperty(properties, "User");
+    }
+}
+
 void readUnitDetails(sdbus::IConnection& connection, const std::string& objectPath, Unit& unit) {
     try {
-        auto proxy = makeProxy(connection, objectPath);
-        PropertyMap properties = proxy->getAllProperties().onInterface(kAllInterfaces);
-        applyUnitProperties(properties, unit);
-        applyAliases(properties, unit);
-        applyRuntimeProperties(properties, unit);
-        if (unit.manager == Manager::System && unit.type == "service") {
-            unit.runAsUser = stringProperty(properties, "User");
-        }
+        applyAllProperties(readAllProperties(connection, objectPath), unit);
     } catch (const sdbus::Error& error) {
         appendError(unit, "reading properties failed: " + error.getMessage());
         debugLog("properties of " + unit.key + " failed: " + error.getMessage());
@@ -236,6 +236,28 @@ void readNotLoadedUnitFiles(sdbus::IProxy& managerProxy, Manager manager, std::v
 }
 
 } // namespace
+
+std::unique_ptr<sdbus::IConnection> connectToManager(Manager manager) {
+    if (manager == Manager::System) {
+        return sdbus::createSystemBusConnection();
+    }
+    return sdbus::createSessionBusConnection();
+}
+
+Unit readUnitAt(sdbus::IConnection& connection, const std::string& objectPath, Manager manager) {
+    PropertyMap properties = readAllProperties(connection, objectPath);
+    Unit unit;
+    unit.name = stringProperty(properties, "Id");
+    unit.key = makeUnitKey(manager, unit.name);
+    unit.type = unitTypeFromName(unit.name);
+    unit.manager = manager;
+    unit.loadState = stringProperty(properties, "LoadState");
+    unit.activeState = activeStateFromString(stringProperty(properties, "ActiveState"));
+    unit.subState = stringProperty(properties, "SubState");
+    unit.isLoaded = true;
+    applyAllProperties(properties, unit);
+    return unit;
+}
 
 std::vector<Unit> readUnitsFromManager(Manager manager, std::string& connectionError) {
     std::vector<Unit> units;

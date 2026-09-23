@@ -49,15 +49,15 @@ void printDumpLine(const nyst::UnitGraph& graph, const nyst::Unit& unit) {
 }
 
 int runDump() {
-    std::string statusMessage;
-    nyst::UnitGraph graph = nyst::loadEverything(statusMessage);
+    std::string sourceStatus;
+    nyst::UnitGraph graph = nyst::loadEverything(sourceStatus);
 
     std::cout << "# key\tactiveState\tsubState\tunitFileState\torigin\tpackage\trunAsUser"
                  "\tdeps\tdependents\tflags\terror\n";
     for (const auto& [key, unit] : graph.allUnits()) {
         printDumpLine(graph, unit);
     }
-    std::cout << "# " << statusMessage << '\n';
+    std::cout << "# " << nyst::summarizeUnits(graph) << " · " << sourceStatus << '\n';
     return 0;
 }
 

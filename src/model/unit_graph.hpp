@@ -25,6 +25,10 @@ public:
 
     const std::map<std::string, Unit>& allUnits() const;
 
+    /// Copies the runtime state of a freshly read unit into the existing unit with the same
+    /// key. Returns false (and changes nothing) if there is no such unit.
+    bool updateRuntimeState(const Unit& fresh);
+
     /// Creates a Missing placeholder for every edge target that has no unit.
     void addPlaceholdersForMissingTargets();
 

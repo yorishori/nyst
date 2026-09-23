@@ -91,7 +91,12 @@ std::size_t countFailedUnits(const UnitGraph& graph) {
 
 } // namespace
 
-UnitGraph loadEverything(std::string& statusMessage) {
+std::string summarizeUnits(const UnitGraph& graph) {
+    return std::to_string(graph.allUnits().size()) + " units · " +
+           std::to_string(countFailedUnits(graph)) + " failed";
+}
+
+UnitGraph loadEverything(std::string& sourceStatus) {
     auto start = Clock::now();
     UnitGraph graph;
 
@@ -108,15 +113,13 @@ UnitGraph loadEverything(std::string& statusMessage) {
     graph.rebuildReverseEdges();
     graph.rebuildDiagnostics();
 
-    statusMessage = std::to_string(graph.allUnits().size()) + " units · " +
-                    std::to_string(countFailedUnits(graph)) + " failed · " + systemStatus + " · " +
-                    userStatus;
+    sourceStatus = systemStatus + " · " + userStatus;
     std::size_t dropped = countUnitsDroppedByCycles(graph);
     if (dropped > 0) {
-        statusMessage +=
-            " · ⚠ " + std::to_string(dropped) + " boot jobs dropped by ordering cycles";
+        sourceStatus += " · ⚠ " + std::to_string(dropped) + " boot jobs dropped by ordering cycles";
     }
-    debugLog("loadEverything finished in " + millisecondsSince(start) + ": " + statusMessage);
+    debugLog("loadEverything finished in " + millisecondsSince(start) + ": " +
+             summarizeUnits(graph) + " · " + sourceStatus);
     return graph;
 }
 

@@ -38,6 +38,7 @@ add_executable(nyst
     src/source/package_db.cpp
     src/source/classifier.cpp
     src/source/boot_log.cpp
+    src/source/live_updates.cpp
     src/source/loader.cpp
     src/source/journal.cpp
     src/source/actions.cpp

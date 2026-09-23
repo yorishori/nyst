@@ -112,6 +112,10 @@ bool hasWarning(const Unit& unit);
 /// or until it gave up and went inactive again (failed units). Microseconds; 0 if unknown.
 std::uint64_t startupDurationUsec(const Unit& unit);
 
+/// Copies everything that changes while a unit runs (states, result, PID, memory,
+/// timestamps, ...) from a freshly read copy. Identity, origin, paths, and edges stay.
+void copyRuntimeState(const Unit& from, Unit& to);
+
 /// Pull-in dependencies: ones that make systemd start the target (Wants=, Requires=, ...).
 bool pullsIn(EdgeKind kind);
 

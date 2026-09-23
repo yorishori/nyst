@@ -165,6 +165,26 @@ std::uint64_t startupDurationUsec(const Unit& unit) {
     return 0;
 }
 
+void copyRuntimeState(const Unit& from, Unit& to) {
+    to.loadState = from.loadState;
+    to.activeState = from.activeState;
+    to.subState = from.subState;
+    to.unitFileState = from.unitFileState;
+    to.result = from.result;
+    to.mainExitKind = from.mainExitKind;
+    to.mainExitStatus = from.mainExitStatus;
+    to.restartCount = from.restartCount;
+    to.mainPid = from.mainPid;
+    to.memoryBytes = from.memoryBytes;
+    to.lastTriggerUsec = from.lastTriggerUsec;
+    to.nextElapseUsec = from.nextElapseUsec;
+    to.activatingUsec = from.activatingUsec;
+    to.activeEnterUsec = from.activeEnterUsec;
+    to.inactiveEnterUsec = from.inactiveEnterUsec;
+    to.conditionUsec = from.conditionUsec;
+    to.conditionResult = from.conditionResult;
+}
+
 // Requisite= only checks that the target is already running, and PartOf=/Triggers=
 // never start anything, so they don't count.
 bool pullsIn(EdgeKind kind) {

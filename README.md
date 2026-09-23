@@ -32,6 +32,15 @@ units..." until the data arrives. Reloads (`u`, and the one after every action) 
 background: you keep browsing the old data, with "loading units..." in the status bar, until the
 new data replaces it. Quitting during a load waits for it to finish.
 
+## Live updates
+
+While nyst runs it listens to systemd's change signals (both managers). Units it already knows
+update in place within about a third of a second: state icons, the details pane, the problems
+view, and the unit counts all follow along, and the journal pane refetches if the selected unit
+changed. A finished `daemon-reload`, or a unit that starts running but was not loaded before,
+triggers a full background reload instead. Units that are merely loaded for a moment (e.g. by
+`systemctl status`) are ignored.
+
 ## The tree
 
 - **Forward** (default): `System` and `User (<name>)` are the two `default.target`s. Children are

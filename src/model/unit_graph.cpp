@@ -46,6 +46,15 @@ const std::map<std::string, Unit>& UnitGraph::allUnits() const {
     return units_;
 }
 
+bool UnitGraph::updateRuntimeState(const Unit& fresh) {
+    auto it = units_.find(fresh.key);
+    if (it == units_.end()) {
+        return false;
+    }
+    copyRuntimeState(fresh, it->second);
+    return true;
+}
+
 void UnitGraph::addPlaceholdersForMissingTargets() {
     // Collect first: inserting while iterating units_ would be confusing to reason about.
     std::map<std::string, Manager> missingTargets;

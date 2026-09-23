@@ -4,6 +4,7 @@
 #include "model/unit_graph.hpp"
 #include "source/actions.hpp"
 #include "source/journal.hpp"
+#include "source/live_updates.hpp"
 #include "source/loader.hpp"
 #include "ui/details_pane.hpp"
 #include "ui/dialogs.hpp"
@@ -54,7 +55,7 @@ std::string toString(InputMode mode) {
 /// What the background loader hands back to the UI thread.
 struct LoadResult {
     UnitGraph graph;
-    std::string statusMessage;
+    std::string sourceStatus;
 };
 
 class Application {
@@ -65,6 +66,8 @@ public:
 private:
     void startReload();
     void applyLoadResult(LoadResult& result);
+    void startWatching();
+    void applyLiveChanges(const UnitChanges& changes);
     void setMode(InputMode mode);
     bool handleEvent(const ftxui::Event& event);
     bool handleTreeModeEvent(const ftxui::Event& event);
@@ -98,11 +101,12 @@ private:
     std::vector<std::string> keyHints() const;
 
     UnitGraph graph_;
-    std::string statusMessage_;
+    std::string sourceStatus_;
     // Loading runs on loaderThread_; these two are only touched on the UI thread.
     std::thread loaderThread_;
     bool loading_ = false;
     bool reloadQueued_ = false;
+    std::unique_ptr<UnitWatcher> watcher_; // live updates; created once the screen exists
     TreeView tree_;
     JournalPane journal_;
     FilterState filters_ = defaultFilters();
@@ -193,12 +197,14 @@ int Application::run() {
     auto screen = ftxui::ScreenInteractive::Fullscreen();
     screen_ = &screen;
     startReload();
+    startWatching();
 
     auto renderer = ftxui::Renderer([this] { return render(); });
     auto component = ftxui::CatchEvent(
         renderer, [this](const ftxui::Event& event) { return handleEvent(event); });
     screen.Loop(component);
 
+    watcher_.reset();
     // A load may still be running and about to Post to the screen; let it finish first.
     if (loaderThread_.joinable()) {
         loaderThread_.join();
@@ -221,7 +227,7 @@ void Application::startReload() {
     ftxui::ScreenInteractive* screen = screen_;
     loaderThread_ = std::thread([this, screen] {
         auto result = std::make_shared<LoadResult>();
-        result->graph = loadEverything(result->statusMessage);
+        result->graph = loadEverything(result->sourceStatus);
         screen->Post([this, result] { applyLoadResult(*result); });
         screen->PostEvent(ftxui::Event::Custom);
     });
@@ -230,12 +236,53 @@ void Application::startReload() {
 // The tree keeps a pointer into graph_, so it is re-pointed after every load.
 void Application::applyLoadResult(LoadResult& result) {
     graph_ = std::move(result.graph);
-    statusMessage_ = result.statusMessage;
+    sourceStatus_ = result.sourceStatus;
     tree_.setGraph(&graph_);
     journal_.invalidate();
     loading_ = false;
     if (reloadQueued_) {
         reloadQueued_ = false;
+        startReload();
+    }
+}
+
+// Like loading, changes arrive on a background thread and are applied on the UI thread.
+void Application::startWatching() {
+    ftxui::ScreenInteractive* screen = screen_;
+    watcher_ = std::make_unique<UnitWatcher>([this, screen](UnitChanges changes) {
+        auto shared = std::make_shared<UnitChanges>(std::move(changes));
+        screen->Post([this, shared] { applyLiveChanges(*shared); });
+        screen->PostEvent(ftxui::Event::Custom);
+    });
+}
+
+// Units nyst already knows get their runtime state refreshed in place. Anything else
+// (a newly loaded unit, a finished daemon-reload) needs the full picture: edges, origin,
+// and groups may all have changed, so it triggers a background reload instead.
+void Application::applyLiveChanges(const UnitChanges& changes) {
+    if (changes.managerReloaded) {
+        startReload();
+        return;
+    }
+    const Unit* selected = selectedUnit();
+    std::string selectedKey = selected == nullptr ? "" : selected->key;
+    bool needsReload = false;
+    for (const Unit& fresh : changes.changedUnits) {
+        const Unit* known = graph_.find(fresh.key);
+        if (known == nullptr || !known->isLoaded) {
+            // `systemctl status` on an unloaded unit loads it briefly without starting it;
+            // only a unit that actually runs is worth a full reload.
+            needsReload = needsReload || fresh.activeState != ActiveState::Inactive;
+            continue;
+        }
+        graph_.updateRuntimeState(fresh);
+        if (fresh.key == selectedKey) {
+            journal_.invalidate();
+        }
+    }
+    graph_.rebuildDiagnostics();
+    tree_.setGraph(&graph_);
+    if (needsReload) {
         startReload();
     }
 }
@@ -694,7 +741,9 @@ ftxui::Element Application::renderStatusBar() const {
     if (loading_) {
         items.push_back(text("loading units...") | color(Color::Cyan) | bold);
     }
-    items.push_back(text(statusMessage_));
+    if (!sourceStatus_.empty()) {
+        items.push_back(text(summarizeUnits(graph_) + " · " + sourceStatus_));
+    }
     if (!noticeMessage_.empty()) {
         Color noticeColor = noticeIsError_ ? Color::Red : Color::Green;
         items.push_back(text(noticeMessage_) | color(noticeColor) | bold);
