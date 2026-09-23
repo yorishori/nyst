@@ -71,6 +71,7 @@ private:
     bool handleTreeKey(const ftxui::Event& event);
     bool handlePaneKey(const ftxui::Event& event);
     void openFullJournal();
+    void openUnitFile();
     const Unit* selectedUnit() const;
     bool handleMouseEvent(ftxui::Event event);
     bool handleHeaderClick(const ftxui::Mouse& mouse);
@@ -202,6 +203,19 @@ void Application::openFullJournal() {
     }
     std::string error;
     screen_->WithRestoredIO([&error, unit] { error = showFullJournal(*unit); })();
+    if (!error.empty()) {
+        setNotice(error, true);
+    }
+}
+
+// Leaves the fullscreen UI so systemctl's pager owns the terminal until it exits.
+void Application::openUnitFile() {
+    const Unit* unit = selectedUnit();
+    if (unit == nullptr) {
+        return;
+    }
+    std::string error;
+    screen_->WithRestoredIO([&error, unit] { error = showUnitFile(*unit); })();
     if (!error.empty()) {
         setNotice(error, true);
     }
@@ -431,6 +445,8 @@ bool Application::handlePaneKey(const ftxui::Event& event) {
         journal_.toggleVisible();
     } else if (isCharacter(event, 'L')) {
         openFullJournal();
+    } else if (isCharacter(event, 'c')) {
+        openUnitFile();
     } else {
         return false;
     }
@@ -628,9 +644,10 @@ std::vector<std::string> Application::keyHints() const {
     case InputMode::Tree:
         break;
     }
-    return {"/ search",  "F filters",  "p problems",     "d direction",        "Enter focus",
-            "J journal", "L full log", "s/S start/stop", "r/R restart/reload", "e/E enable/disable",
-            "u reload",  "? help",     "q quit"};
+    return {
+        "/ search",           "F filters",  "p problems",  "d direction",    "Enter focus",
+        "J journal",          "L full log", "c unit file", "s/S start/stop", "r/R restart/reload",
+        "e/E enable/disable", "u reload",   "? help",      "q quit"};
 }
 
 } // namespace

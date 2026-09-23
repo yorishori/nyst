@@ -13,13 +13,14 @@ bool worksOnUnitFiles(UnitAction action) {
     return action == UnitAction::Enable || action == UnitAction::Disable;
 }
 
-std::string systemctlCommand(const Unit& unit, UnitAction action) {
+/// "systemctl [--user] <verb> '<name>'". Single quotes are safe: callers check the name
+/// with isShellSafeUnitName first.
+std::string systemctlCommand(const Unit& unit, const std::string& verb) {
     std::string command = "systemctl";
     if (unit.manager == Manager::User) {
         command += " --user";
     }
-    // Single quotes are safe: the caller has checked the name with isShellSafeUnitName.
-    return command + " " + toString(action) + " '" + unit.name + "'";
+    return command + " " + verb + " '" + unit.name + "'";
 }
 
 void waitForEnter() {
@@ -69,7 +70,7 @@ int runActionInTerminal(const Unit& unit, UnitAction action) {
         return -1;
     }
 
-    std::string command = systemctlCommand(unit, action);
+    std::string command = systemctlCommand(unit, toString(action));
     std::cout << "\n$ " << command << "\n" << std::flush;
     int exitCode = runCommand(command);
     if (exitCode == 0) {
@@ -79,6 +80,20 @@ int runActionInTerminal(const Unit& unit, UnitAction action) {
     }
     waitForEnter();
     return exitCode;
+}
+
+std::string showUnitFile(const Unit& unit) {
+    if (unit.origin == Origin::Missing || unit.loadState == "not-found") {
+        return unit.name + " has no unit file";
+    }
+    if (!isShellSafeUnitName(unit.name)) {
+        return unit.name + " has unexpected characters in its name";
+    }
+    int exitCode = runCommand(systemctlCommand(unit, "cat"));
+    if (exitCode != 0) {
+        return "systemctl cat exited with status " + std::to_string(exitCode);
+    }
+    return "";
 }
 
 } // namespace nyst

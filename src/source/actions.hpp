@@ -21,4 +21,9 @@ std::string whyActionUnavailable(const Unit& unit, UnitAction action);
 /// released the terminal first. Returns the exit code (-1 if nothing could run).
 int runActionInTerminal(const Unit& unit, UnitAction action);
 
+/// Shows `systemctl [--user] cat <name>` (the unit file plus all drop-ins) in systemctl's
+/// pager and blocks until it exits. The caller must have released the terminal first.
+/// Returns an error message, or an empty string on success.
+std::string showUnitFile(const Unit& unit);
+
 } // namespace nyst

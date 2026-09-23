@@ -55,6 +55,7 @@ Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
   selection changes. `J` hides/shows it (hidden = no journalctl calls). Mouse wheel scrolls it.
 - `L` opens the full journal in journalctl's pager (`journalctl [--user] -u <name> -e`); quit the
   pager to come back.
+- `c` shows the unit file plus all its drop-ins (`systemctl [--user] cat <name>`) the same way.
 
 ## Actions
 
@@ -190,6 +191,7 @@ All keys:
 | `p` | problems preset |
 | `J` | show / hide the journal pane |
 | `L` | full journal in a pager |
+| `c` | unit file and drop-ins in a pager |
 | `s` / `S` | start / stop (asks first) |
 | `r` / `R` | restart / reload (asks first) |
 | `e` / `E` | enable / disable (asks first) |
