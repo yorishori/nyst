@@ -144,6 +144,10 @@ bool neverStartedThisBoot(const Unit& unit) {
            !skippedByCondition;
 }
 
+bool hasWarning(const Unit& unit) {
+    return !unit.wantedBy.empty() || !unit.droppedByCycle.empty();
+}
+
 // Requisite= only checks that the target is already running, and PartOf=/Triggers=
 // never start anything, so they don't count.
 bool pullsIn(EdgeKind kind) {

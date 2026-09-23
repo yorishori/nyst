@@ -33,6 +33,9 @@ std::string flagsOf(const nyst::Unit& unit) {
     if (!unit.wantedBy.empty()) {
         appendFlag(flags, "never-started");
     }
+    if (!unit.droppedByCycle.empty()) {
+        appendFlag(flags, "dropped-by-cycle");
+    }
     return flags;
 }
 

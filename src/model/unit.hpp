@@ -83,6 +83,9 @@ struct Unit {
     // Diagnostics, filled in by UnitGraph::rebuildDiagnostics(). Names of active units that
     // pull this one in although it never started this boot; empty if nothing is suspicious.
     std::vector<std::string> wantedBy;
+    // Set by the loader from the boot journal: the ordering cycle ("a → b → a") that made
+    // systemd drop this unit's start job at boot. Empty if that did not happen.
+    std::string droppedByCycle;
 };
 
 /// Builds the unique graph key for a unit, e.g. "user:pipewire.service".
@@ -99,6 +102,10 @@ bool isMasked(const Unit& unit);
 /// True if the unit is loaded but never left "inactive" this boot and no Condition*=
 /// check skipped it, i.e. nothing ever tried to start it (or its start job was dropped).
 bool neverStartedThisBoot(const Unit& unit);
+
+/// True if the unit has a diagnostic worth a ⚠: never started though wanted, or its start
+/// job was dropped at boot by an ordering cycle.
+bool hasWarning(const Unit& unit);
 
 /// Pull-in dependencies: ones that make systemd start the target (Wants=, Requires=, ...).
 bool pullsIn(EdgeKind kind);

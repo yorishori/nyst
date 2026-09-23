@@ -17,6 +17,7 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 
+#include <algorithm>
 #include <cctype>
 #include <iostream>
 #include <string>
@@ -27,6 +28,7 @@ namespace nyst {
 namespace {
 
 const int kPageSize = 20;
+const int kWheelStep = 3;
 
 /// Which part of the screen receives key presses.
 enum class InputMode { Tree, Search, FilterPanel, ConfirmAction, Help };
@@ -76,7 +78,8 @@ private:
     ftxui::Element render();
     ftxui::Element renderHeader();
     ftxui::Element renderSearchBox();
-    ftxui::Element renderDetailsPane() const;
+    ftxui::Element renderDetailsPane();
+    bool handleDetailsWheel(const ftxui::Mouse& mouse);
     ftxui::Element renderStatusBar() const;
     ftxui::Element addOverlay(ftxui::Element main);
     std::vector<std::string> keyHints() const;
@@ -106,6 +109,12 @@ private:
     ftxui::Box filtersLabelArea_;
     ftxui::Box filterPanelArea_;
     ftxui::Box confirmDialogArea_;
+    ftxui::Box detailsArea_;
+
+    // Details pane scroll position in lines; reset whenever the selection changes.
+    int detailsScroll_ = 0;
+    int detailsContentHeight_ = 0;
+    std::string detailsUnitKey_;
 };
 
 bool isLeftClick(const ftxui::Mouse& mouse) {
@@ -333,6 +342,9 @@ bool Application::handleMouseEvent(ftxui::Event event) {
     if (mode_ == InputMode::Search && isLeftClick(mouse)) {
         setMode(InputMode::Tree);
     }
+    if (handleDetailsWheel(mouse)) {
+        return true;
+    }
     if (journal_.isVisible() && journal_.handleMouse(mouse)) {
         return true;
     }
@@ -506,10 +518,41 @@ ftxui::Element Application::addOverlay(ftxui::Element main) {
     return dbox({main, overlay | clear_under | center});
 }
 
-ftxui::Element Application::renderDetailsPane() const {
+// yframe centres whatever is focused, so focusing the line half a pane below the
+// desired top edge scrolls the content by exactly detailsScroll_ lines.
+ftxui::Element Application::renderDetailsPane() {
     using namespace ftxui;
-    Element content = renderDetails(selectedUnit(), graph_) | yframe | flex;
-    return window(text(" details "), content) | size(WIDTH, EQUAL, kDetailsPaneWidth);
+    const Unit* unit = selectedUnit();
+    std::string key = unit == nullptr ? "" : unit->key;
+    if (key != detailsUnitKey_) {
+        detailsUnitKey_ = key;
+        detailsScroll_ = 0;
+    }
+
+    Element content = renderDetails(unit, graph_);
+    content->ComputeRequirement();
+    detailsContentHeight_ = content->requirement().min_y;
+
+    // ftxui measures the frame as y_max - y_min (one less than its rows); the window's
+    // border takes another two.
+    int frameSpan = std::max(0, detailsArea_.y_max - detailsArea_.y_min - 2);
+    Element scrolled = content | focusPosition(0, detailsScroll_ + frameSpan / 2) |
+                       vscroll_indicator | yframe | flex;
+    return window(text(" details "), scrolled) | size(WIDTH, EQUAL, kDetailsPaneWidth) |
+           reflect(detailsArea_);
+}
+
+bool Application::handleDetailsWheel(const ftxui::Mouse& mouse) {
+    using ftxui::Mouse;
+    bool isWheel = mouse.button == Mouse::WheelUp || mouse.button == Mouse::WheelDown;
+    if (!isWheel || !detailsArea_.Contain(mouse.x, mouse.y)) {
+        return false;
+    }
+    int visibleRows = detailsArea_.y_max - detailsArea_.y_min - 1;
+    int maxScroll = std::max(0, detailsContentHeight_ - visibleRows);
+    int step = mouse.button == Mouse::WheelUp ? -kWheelStep : kWheelStep;
+    detailsScroll_ = std::clamp(detailsScroll_ + step, 0, maxScroll);
+    return true;
 }
 
 ftxui::Element Application::renderSearchBox() {

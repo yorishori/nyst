@@ -1,6 +1,7 @@
 // Single entry point that reads, classifies, and links every unit into a UnitGraph.
 #include "source/loader.hpp"
 
+#include "source/boot_log.hpp"
 #include "source/classifier.hpp"
 #include "source/package_db.hpp"
 #include "source/systemd_bus.hpp"
@@ -8,6 +9,7 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <map>
 #include <pwd.h>
 #include <unistd.h>
 
@@ -47,9 +49,14 @@ std::string loadManager(Manager manager, const PackageDb& packages,
     auto start = Clock::now();
     std::string connectionError;
     std::vector<Unit> units = readUnitsFromManager(manager, connectionError);
+    std::map<std::string, std::string> droppedJobs = readJobsDroppedByOrderingCycles(manager);
 
     for (Unit& unit : units) {
         classifyUnit(unit, packages, context);
+        auto dropped = droppedJobs.find(unit.name);
+        if (dropped != droppedJobs.end()) {
+            unit.droppedByCycle = dropped->second;
+        }
         graph.addUnit(unit);
     }
     debugLog("loaded " + std::to_string(units.size()) + " " + toString(manager) + " units in " +
@@ -60,6 +67,16 @@ std::string loadManager(Manager manager, const PackageDb& packages,
         return label + " units unavailable (" + connectionError + ")";
     }
     return toString(manager) + " bus ok";
+}
+
+std::size_t countUnitsDroppedByCycles(const UnitGraph& graph) {
+    std::size_t dropped = 0;
+    for (const auto& [key, unit] : graph.allUnits()) {
+        if (!unit.droppedByCycle.empty()) {
+            ++dropped;
+        }
+    }
+    return dropped;
 }
 
 std::size_t countFailedUnits(const UnitGraph& graph) {
@@ -94,6 +111,11 @@ UnitGraph loadEverything(std::string& statusMessage) {
     statusMessage = std::to_string(graph.allUnits().size()) + " units · " +
                     std::to_string(countFailedUnits(graph)) + " failed · " + systemStatus + " · " +
                     userStatus;
+    std::size_t dropped = countUnitsDroppedByCycles(graph);
+    if (dropped > 0) {
+        statusMessage +=
+            " · ⚠ " + std::to_string(dropped) + " boot jobs dropped by ordering cycles";
+    }
     debugLog("loadEverything finished in " + millisecondsSince(start) + ": " + statusMessage);
     return graph;
 }

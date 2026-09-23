@@ -41,7 +41,7 @@ Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 | `●` green | active | `⚙` | drop-in outside `/usr/lib` |
 | `○` dim | inactive | `⇪` | `/etc` file shadows a packaged unit |
 | `✗` red | failed | `↻` | cycle, not expandable |
-| | | `⚠` | wanted by an active unit, never started |
+| | | `⚠` | never started though wanted, or dropped by a boot ordering cycle |
 | `◐` yellow | transitioning | | |
 | `?` | missing | | |
 | `⊘` | masked | | |
@@ -100,11 +100,20 @@ usually means its start job was dropped, e.g. to break an ordering cycle, or tha
 without being started. Oneshots that ran and exited, units you stopped, and units skipped by a
 condition are not flagged. Devices are ignored as pullers: they only pull units in when plugged.
 
+### Boot ordering cycles (`⚠`)
+
+When systemd finds an ordering cycle at boot, it drops one start job to break it, and that unit
+silently never starts. nyst reads those messages from the current boot's journal (both managers),
+marks each dropped unit with `⚠`, counts them in the status bar, and shows the cycle in the
+details pane as `a → b → … → a` (each unit waits for the next). Fixing any one link breaks the
+cycle; a unit you wrote yourself (e.g. in `/etc/systemd/system/`) is the usual suspect. Takes
+effect on the next boot.
+
 ## Mouse
 
 - **Tree:** click a row to select it; click its arrow, or click an already-selected row, to
   expand/collapse. The wheel moves the cursor.
-- **Journal:** the wheel scrolls through the log lines.
+- **Details and journal:** the wheel scrolls them.
 - **Header:** click the search box to type, `[problems ...]` to toggle the problems view,
   `[dir: ...]` to flip the direction, and `[filters: N off]` to open the filter panel.
 - **Filter panel:** click checkboxes and buttons; click outside the panel or `[close]` to close it.
@@ -122,7 +131,7 @@ key  activeState  subState  unitFileState  origin  package  runAsUser  #deps  #d
 - `-` means the field is empty.
 - `flags` is a comma list of `modified` (drop-in outside `/usr/lib`), `shadows` (an `/etc` file
   overrides a packaged unit of the same name), `masked`, `not-loaded` (only known as a unit file),
-  and `never-started` (see the `⚠` marker).
+  `never-started`, and `dropped-by-cycle` (see the `⚠` markers).
 - Lines starting with `#` are the header and the status message.
 
 Handy comparisons:

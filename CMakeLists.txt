@@ -36,6 +36,7 @@ add_executable(nyst
     src/source/systemd_bus.cpp
     src/source/package_db.cpp
     src/source/classifier.cpp
+    src/source/boot_log.cpp
     src/source/loader.cpp
     src/source/journal.cpp
     src/source/actions.cpp

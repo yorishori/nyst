@@ -2,9 +2,6 @@
 #include "source/journal.hpp"
 
 #include "util/command.hpp"
-#include "util/debug_log.hpp"
-
-#include <cstdio>
 
 namespace nyst {
 
@@ -36,33 +33,6 @@ std::string sanitizeLine(const std::string& line) {
     return clean;
 }
 
-std::vector<std::string> readCommandOutput(const std::string& command) {
-    std::vector<std::string> lines;
-    FILE* pipe = popen(command.c_str(), "r");
-    if (pipe == nullptr) {
-        return {"could not run journalctl"};
-    }
-
-    std::string current;
-    char buffer[4096];
-    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-        current += buffer;
-        if (!current.empty() && current.back() == '\n') {
-            lines.push_back(sanitizeLine(current));
-            current.clear();
-        }
-    }
-    if (!current.empty()) {
-        lines.push_back(sanitizeLine(current));
-    }
-
-    int status = exitCodeOf(pclose(pipe));
-    if (status != 0) {
-        lines.push_back("(journalctl exited with status " + std::to_string(status) + ")");
-    }
-    return lines;
-}
-
 } // namespace
 
 std::vector<std::string> recentLogLines(const Unit& unit, int count) {
@@ -72,8 +42,15 @@ std::vector<std::string> recentLogLines(const Unit& unit, int count) {
     // stderr is merged so permission problems show up in the pane instead of vanishing.
     std::string command =
         baseCommand(unit) + " -n " + std::to_string(count) + " --no-pager -o short-iso 2>&1";
-    debugLog("run: " + command);
-    return readCommandOutput(command);
+    int exitCode = 0;
+    std::vector<std::string> lines;
+    for (const std::string& line : readCommandLines(command, exitCode)) {
+        lines.push_back(sanitizeLine(line));
+    }
+    if (exitCode != 0) {
+        lines.push_back("(journalctl exited with status " + std::to_string(exitCode) + ")");
+    }
+    return lines;
 }
 
 std::string showFullJournal(const Unit& unit) {

@@ -2,6 +2,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace nyst {
 
@@ -11,5 +12,9 @@ int exitCodeOf(int waitStatus);
 /// Runs the command through the shell, attached to the current terminal, and logs it.
 /// Returns its exit code.
 int runCommand(const std::string& command);
+
+/// Runs the command through the shell and returns its standard output split into lines
+/// (without the newlines). exitCode gets its exit code, or -1 if it could not start.
+std::vector<std::string> readCommandLines(const std::string& command, int& exitCode);
 
 } // namespace nyst

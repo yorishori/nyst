@@ -211,6 +211,13 @@ ftxui::Elements warningFields(const Unit& unit) {
                                    joinLines(unit.wantedBy),
                                ftxui::color(ftxui::Color::Yellow)));
     }
+    if (!unit.droppedByCycle.empty()) {
+        fields.push_back(field("⚠ warning",
+                               "start job dropped at boot to break an ordering cycle "
+                               "(each unit waits for the next): " +
+                                   unit.droppedByCycle,
+                               ftxui::color(ftxui::Color::Yellow)));
+    }
     return fields;
 }
 
