@@ -47,8 +47,10 @@ ClassifierContext makeClassifierContext() {
 std::string loadManager(Manager manager, const PackageDb& packages,
                         const ClassifierContext& context, UnitGraph& graph) {
     auto start = Clock::now();
-    std::string connectionError;
-    std::vector<Unit> units = readUnitsFromManager(manager, connectionError);
+    ManagerSnapshot snapshot = readManager(manager);
+    std::vector<Unit>& units = snapshot.units;
+    const std::string& connectionError = snapshot.connectionError;
+    graph.setBootFinishedUsec(manager, snapshot.bootFinishedUsec);
     std::map<std::string, std::string> droppedJobs = readJobsDroppedByOrderingCycles(manager);
 
     for (Unit& unit : units) {

@@ -33,7 +33,7 @@ std::vector<HelpSection> helpSections() {
           {"Enter", "focus on unit"},
           {"Backspace", "back to previous root"},
           {"d", "flip direction"},
-          {"b", "sort by startup time"}}},
+          {"b", "sort: name/slowest/boot"}}},
         {"search and filters",
          {{"/", "search (Esc clears)"}, {"F", "filter panel"}, {"p", "problems only"}}},
         {"panes",

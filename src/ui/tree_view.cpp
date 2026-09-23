@@ -70,12 +70,64 @@ bool slowestStartupFirst(const Unit* left, const Unit* right) {
     return left->key < right->key;
 }
 
+/// Boot order key: first everything started during boot, then everything started later,
+/// then everything that never started; by start time within each part.
+struct BootOrderEntry {
+    int part = 0;
+    std::uint64_t startedUsec = 0;
+    const Unit* unit = nullptr;
+};
+
+bool bootOrderEntryBefore(const BootOrderEntry& left, const BootOrderEntry& right) {
+    if (left.part != right.part) {
+        return left.part < right.part;
+    }
+    if (left.startedUsec != right.startedUsec) {
+        return left.startedUsec < right.startedUsec;
+    }
+    return left.unit->key < right.unit->key;
+}
+
+std::vector<const Unit*> unitsInBootOrder(const UnitGraph& graph) {
+    std::vector<BootOrderEntry> entries;
+    for (const auto& [key, unit] : graph.allUnits()) {
+        BootOrderEntry entry;
+        entry.unit = &unit;
+        entry.startedUsec = unit.activatingUsec;
+        if (unit.activatingUsec == 0) {
+            entry.part = 2;
+        } else if (graph.startedAfterBoot(unit)) {
+            entry.part = 1;
+        }
+        entries.push_back(entry);
+    }
+    std::sort(entries.begin(), entries.end(), bootOrderEntryBefore);
+
+    std::vector<const Unit*> units;
+    for (const BootOrderEntry& entry : entries) {
+        units.push_back(entry.unit);
+    }
+    return units;
+}
+
 std::string parentPathOf(const std::string& path) {
     std::size_t slash = path.rfind('/');
     return slash == std::string::npos ? "" : path.substr(0, slash);
 }
 
 } // namespace
+
+std::string toString(ListOrder order) {
+    switch (order) {
+    case ListOrder::FailedFirst:
+        return "name";
+    case ListOrder::SlowestStartup:
+        return "slowest";
+    case ListOrder::BootOrder:
+        return "boot order";
+    }
+    return "unknown";
+}
 
 std::string toString(TreeDirection direction) {
     switch (direction) {
@@ -201,7 +253,7 @@ void TreeView::toggleDirection() {
     direction_ =
         direction_ == TreeDirection::Forward ? TreeDirection::Reverse : TreeDirection::Forward;
     if (direction_ == TreeDirection::Forward) {
-        sortByStartupTime_ = false;
+        listOrder_ = ListOrder::FailedFirst;
     }
     std::string focused = focusedUnitKey();
     if (!focused.empty()) {
@@ -211,20 +263,29 @@ void TreeView::toggleDirection() {
     rebuildRows();
 }
 
-void TreeView::toggleStartupSort() {
-    sortByStartupTime_ = !sortByStartupTime_;
-    if (sortByStartupTime_ && direction_ == TreeDirection::Forward) {
+void TreeView::cycleListOrder() {
+    switch (listOrder()) {
+    case ListOrder::FailedFirst:
+        listOrder_ = ListOrder::SlowestStartup;
+        break;
+    case ListOrder::SlowestStartup:
+        listOrder_ = ListOrder::BootOrder;
+        break;
+    case ListOrder::BootOrder:
+        listOrder_ = ListOrder::FailedFirst;
+        break;
+    }
+    if (listOrder_ != ListOrder::FailedFirst && direction_ == TreeDirection::Forward) {
+        ListOrder wanted = listOrder_;
         toggleDirection();
-        sortByStartupTime_ = true;
+        listOrder_ = wanted;
     }
     rebuildRows();
-    if (sortByStartupTime_) {
-        moveCursorToStart();
-    }
+    moveCursorToStart();
 }
 
-bool TreeView::sortsByStartupTime() const {
-    return sortByStartupTime_ && direction_ == TreeDirection::Reverse;
+ListOrder TreeView::listOrder() const {
+    return direction_ == TreeDirection::Reverse ? listOrder_ : ListOrder::FailedFirst;
 }
 
 void TreeView::focusSelected() {
@@ -286,11 +347,16 @@ std::vector<TreeNode> TreeView::defaultForwardRoots() const {
 
 std::vector<TreeNode> TreeView::reverseTopLevel() const {
     std::vector<const Unit*> units;
-    for (const auto& [key, unit] : graph_->allUnits()) {
-        units.push_back(&unit);
+    if (listOrder_ == ListOrder::BootOrder) {
+        units = unitsInBootOrder(*graph_);
+    } else {
+        for (const auto& [key, unit] : graph_->allUnits()) {
+            units.push_back(&unit);
+        }
+        std::sort(units.begin(), units.end(),
+                  listOrder_ == ListOrder::SlowestStartup ? slowestStartupFirst
+                                                          : failedFirstThenByName);
     }
-    std::sort(units.begin(), units.end(),
-              sortByStartupTime_ ? slowestStartupFirst : failedFirstThenByName);
 
     std::vector<TreeNode> nodes;
     for (const Unit* unit : units) {
@@ -664,8 +730,30 @@ ftxui::Element renderGroupRow(const Row& row, ftxui::Elements left) {
     return hbox(left);
 }
 
-ftxui::Element renderUnitRow(const Row& row, const Unit& unit, TreeDirection direction,
-                             bool showStartupTime, ftxui::Elements left) {
+/// Timing shown on the right of a row, depending on the list order.
+ftxui::Elements timingColumn(const Unit& unit, const UnitGraph& graph, ListOrder order) {
+    using namespace ftxui;
+    std::uint64_t startup = startupDurationUsec(unit);
+    if (order == ListOrder::SlowestStartup && startup > 0) {
+        return {text(formatDuration(startup) + "  ") | color(Color::Yellow)};
+    }
+    if (order != ListOrder::BootOrder || unit.activatingUsec == 0) {
+        return {};
+    }
+    Elements timing = {text("+" + formatDuration(unit.activatingUsec)) | color(Color::Cyan)};
+    // Sub-millisecond starts (sockets, targets) would only show as "(0.000s)".
+    if (startup >= 1000) {
+        timing.push_back(text(" (" + formatDuration(startup) + ")") | dim);
+    }
+    if (graph.startedAfterBoot(unit)) {
+        timing.push_back(text(" after boot") | color(Color::Yellow));
+    }
+    timing.push_back(text("  "));
+    return timing;
+}
+
+ftxui::Element renderUnitRow(const Row& row, const Unit& unit, const UnitGraph& graph,
+                             TreeDirection direction, ListOrder order, ftxui::Elements left) {
     using namespace ftxui;
     left.push_back(stateIcon(unit));
     left.push_back(text(" "));
@@ -681,11 +769,7 @@ ftxui::Element renderUnitRow(const Row& row, const Unit& unit, TreeDirection dir
         left.push_back(text("   " + edge) | dim);
     }
 
-    Elements right;
-    std::uint64_t startup = startupDurationUsec(unit);
-    if (showStartupTime && startup > 0) {
-        right.push_back(text(formatDuration(startup) + "  ") | color(Color::Yellow));
-    }
+    Elements right = timingColumn(unit, graph, order);
     right.push_back(originTag(unit));
     if (hasWarning(unit)) {
         right.push_back(text(" ⚠") | color(Color::Yellow) | bold);
@@ -701,7 +785,7 @@ ftxui::Element renderUnitRow(const Row& row, const Unit& unit, TreeDirection dir
 }
 
 ftxui::Element renderRow(const Row& row, const UnitGraph& graph, TreeDirection direction,
-                         bool showStartupTime) {
+                         ListOrder order) {
     using namespace ftxui;
     Elements left = {text(std::string(static_cast<std::size_t>(row.depth) * 2, ' ')),
                      text(expandArrow(row) + " ")};
@@ -713,7 +797,7 @@ ftxui::Element renderRow(const Row& row, const UnitGraph& graph, TreeDirection d
         left.push_back(text(row.unitKey) | color(Color::Red));
         return hbox(left);
     }
-    return renderUnitRow(row, *unit, direction, showStartupTime, left);
+    return renderUnitRow(row, *unit, graph, direction, order, left);
 }
 
 } // namespace
@@ -730,8 +814,8 @@ ftxui::Element TreeView::render() const {
     rowBoxes_.assign(rows_.size(), Box{});
     Elements lines;
     for (int index = 0; index < static_cast<int>(rows_.size()); ++index) {
-        Element line = renderRow(rows_[index], *graph_, direction_, sortsByStartupTime()) |
-                       reflect(rowBoxes_[index]);
+        Element line =
+            renderRow(rows_[index], *graph_, direction_, listOrder()) | reflect(rowBoxes_[index]);
         if (rows_[index].isContextOnly) {
             line = line | dim;
         }

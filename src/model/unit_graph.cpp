@@ -55,6 +55,16 @@ bool UnitGraph::updateRuntimeState(const Unit& fresh) {
     return true;
 }
 
+void UnitGraph::setBootFinishedUsec(Manager manager, std::uint64_t usec) {
+    bootFinishedUsec_[manager] = usec;
+}
+
+bool UnitGraph::startedAfterBoot(const Unit& unit) const {
+    auto it = bootFinishedUsec_.find(unit.manager);
+    bool bootFinishKnown = it != bootFinishedUsec_.end() && it->second != 0;
+    return bootFinishKnown && unit.activatingUsec > it->second;
+}
+
 void UnitGraph::addPlaceholdersForMissingTargets() {
     // Collect first: inserting while iterating units_ would be confusing to reason about.
     std::map<std::string, Manager> missingTargets;

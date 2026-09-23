@@ -19,6 +19,15 @@ enum class TreeDirection { Forward, Reverse };
 
 std::string toString(TreeDirection direction);
 
+/// How the flat list of the reverse direction is ordered.
+enum class ListOrder {
+    FailedFirst,    // failed units first, then by name
+    SlowestStartup, // like systemd-analyze blame
+    BootOrder       // when each unit started, earliest first
+};
+
+std::string toString(ListOrder order);
+
 /// One visible line of the tree. Rebuilt whenever the tree changes.
 struct Row {
     std::string path; // "/"-joined node ids from the top level down; unique per row
@@ -73,10 +82,11 @@ public:
 
     void toggleDirection();
 
-    /// Switches the reverse list between "failed first, then by name" and "slowest startup
-    /// first" (like systemd-analyze blame). Turning it on also switches to the reverse list.
-    void toggleStartupSort();
-    bool sortsByStartupTime() const;
+    /// Cycles the reverse list's order: failed first -> slowest startup -> boot order.
+    /// Leaving "failed first" also switches to the reverse direction.
+    void cycleListOrder();
+    /// The order in effect: always FailedFirst in the forward direction.
+    ListOrder listOrder() const;
     /// Re-roots the tree on the selected unit (Enter).
     void focusSelected();
     /// Returns to the previous root (Backspace).
@@ -126,7 +136,7 @@ private:
 
     const UnitGraph* graph_ = nullptr;
     TreeDirection direction_ = TreeDirection::Forward;
-    bool sortByStartupTime_ = false; // only meaningful in the reverse direction
+    ListOrder listOrder_ = ListOrder::FailedFirst; // only used in the reverse direction
     FilterState filters_ = defaultFilters();
     std::set<std::string> forwardExpanded_;
     std::set<std::string> reverseExpanded_;

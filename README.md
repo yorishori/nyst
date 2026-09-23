@@ -49,9 +49,15 @@ triggers a full background reload instead. Units that are merely loaded for a mo
 - **Reverse** (`d`): a flat list of every unit, failed first. Children are who needs the unit
   (`required-by`, `wanted-by`, ...).
 - `↻` marks a unit that already appears above it on the same branch (a dependency cycle).
-- `b` sorts the reverse list by **startup time**, slowest first, like `systemd-analyze blame`,
-  and shows each unit's time on its row (the details pane always shows it). Pressing `b` again,
-  or flipping to the forward tree, goes back to "failed first, then by name".
+- `b` cycles the reverse list's order:
+  - **name**: failed first, then alphabetical (default);
+  - **slowest**: by startup time, slowest first, like `systemd-analyze blame`;
+  - **boot order**: when each unit started, counted from kernel start, earliest first. Rows show
+    `+start (duration)`. Units started after their manager finished booting (restarts, socket
+    activation, your login) come next, marked `after boot`, then units that never started.
+    systemd only keeps the *last* start time, so a restarted unit moves to the "after boot" part.
+
+  Flipping to the forward tree goes back to "name".
 
 Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 
@@ -207,7 +213,7 @@ All keys:
 | `Space` | toggle expand |
 | `Enter` / `Backspace` | focus on unit / go back |
 | `d` | toggle tree direction |
-| `b` | sort by startup time (blame) |
+| `b` | reverse list order: name / slowest / boot order |
 | `/` | search (`Enter` keeps, `Esc` clears, `↑/↓` move while typing) |
 | `F` | filter panel (arrows move, `Space`/`Enter` toggle, `Esc`/`F` close) |
 | `p` | problems preset |

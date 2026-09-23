@@ -259,19 +259,22 @@ Unit readUnitAt(sdbus::IConnection& connection, const std::string& objectPath, M
     return unit;
 }
 
-std::vector<Unit> readUnitsFromManager(Manager manager, std::string& connectionError) {
-    std::vector<Unit> units;
+ManagerSnapshot readManager(Manager manager) {
+    ManagerSnapshot snapshot;
     std::set<std::string> knownNames;
     try {
         auto connection = connectToManager(manager);
         auto managerProxy = makeProxy(*connection, kManagerPath);
-        readLoadedUnits(*connection, *managerProxy, manager, units, knownNames);
-        readNotLoadedUnitFiles(*managerProxy, manager, units, knownNames);
+        sdbus::Variant finished =
+            managerProxy->getProperty("FinishTimestampMonotonic").onInterface(kManagerInterface);
+        snapshot.bootFinishedUsec = finished.get<std::uint64_t>();
+        readLoadedUnits(*connection, *managerProxy, manager, snapshot.units, knownNames);
+        readNotLoadedUnitFiles(*managerProxy, manager, snapshot.units, knownNames);
     } catch (const sdbus::Error& error) {
-        connectionError = error.getMessage();
+        snapshot.connectionError = error.getMessage();
         debugLog(toString(manager) + " bus failed: " + error.getName() + ": " + error.getMessage());
     }
-    return units;
+    return snapshot;
 }
 
 } // namespace nyst

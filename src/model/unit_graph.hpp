@@ -29,6 +29,13 @@ public:
     /// key. Returns false (and changes nothing) if there is no such unit.
     bool updateRuntimeState(const Unit& fresh);
 
+    /// Records when a manager finished starting up (monotonic microseconds).
+    void setBootFinishedUsec(Manager manager, std::uint64_t usec);
+
+    /// True if the unit last started after its manager had finished booting, e.g. because
+    /// it was restarted or started on demand later.
+    bool startedAfterBoot(const Unit& unit) const;
+
     /// Creates a Missing placeholder for every edge target that has no unit.
     void addPlaceholdersForMissingTargets();
 
@@ -43,6 +50,7 @@ private:
     std::map<std::string, Unit> units_;
     std::map<std::string, std::vector<Edge>> reverseEdges_;
     std::map<std::string, std::string> keyByAliasKey_;
+    std::map<Manager, std::uint64_t> bootFinishedUsec_;
 };
 
 } // namespace nyst

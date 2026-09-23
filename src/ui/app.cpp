@@ -486,7 +486,7 @@ bool Application::handleHeaderClick(const ftxui::Mouse& mouse) {
     } else if (directionLabelArea_.Contain(mouse.x, mouse.y)) {
         tree_.toggleDirection();
     } else if (sortLabelArea_.Contain(mouse.x, mouse.y)) {
-        tree_.toggleStartupSort();
+        tree_.cycleListOrder();
     } else if (problemsLabelArea_.Contain(mouse.x, mouse.y)) {
         filters_.problemsOnly = !filters_.problemsOnly;
     } else {
@@ -603,7 +603,7 @@ bool Application::handleTreeKey(const ftxui::Event& event) {
     } else if (isCharacter(event, 'd')) {
         tree_.toggleDirection();
     } else if (isCharacter(event, 'b')) {
-        tree_.toggleStartupSort();
+        tree_.cycleListOrder();
     } else {
         return false;
     }
@@ -721,8 +721,7 @@ ftxui::Element Application::renderHeader() {
     labels.push_back(problems | reflect(problemsLabelArea_));
     labels.push_back(text("[dir: " + toString(tree_.direction()) + "]") |
                      reflect(directionLabelArea_));
-    std::string sortName = tree_.sortsByStartupTime() ? "startup time" : "name";
-    labels.push_back(text("[sort: " + sortName + "]") | reflect(sortLabelArea_));
+    labels.push_back(text("[sort: " + toString(tree_.listOrder()) + "]") | reflect(sortLabelArea_));
     labels.push_back(text("[filters: " + std::to_string(countDisabledFilters(filters_)) + " off]") |
                      reflect(filtersLabelArea_));
 
@@ -769,22 +768,10 @@ std::vector<std::string> Application::keyHints() const {
     case InputMode::Tree:
         break;
     }
-    return {"/ search",
-            "F filters",
-            "p problems",
-            "d direction",
-            "b sort by startup",
-            "Enter focus",
-            "J journal",
-            "L full log",
-            "c unit file",
-            "s/S start/stop",
-            "r/R restart/reload",
-            "e/E enable/disable",
-            "m/M mask/unmask",
-            "D daemon-reload",
-            "u reload",
-            "? help",
+    return {"/ search",        "F filters",       "p problems",         "d direction",
+            "b sort order",    "Enter focus",     "J journal",          "L full log",
+            "c unit file",     "s/S start/stop",  "r/R restart/reload", "e/E enable/disable",
+            "m/M mask/unmask", "D daemon-reload", "u reload",           "? help",
             "q quit"};
 }
 
