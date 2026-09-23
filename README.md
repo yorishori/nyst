@@ -92,7 +92,9 @@ Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 - Its **timing** section shows when the unit last started (`+offset since kernel start (wall
   clock)`, marked `after boot` if later than boot), how long that took and the start timeout
   systemd allows (so you can tell a timeout from a program giving up), how long it has been
-  active, when it stopped, and whether a `Condition*=` check skipped it.
+  active, when it stopped, and whether a `Condition*=` check skipped it. For a skipped unit it
+  lists its `Condition*=`/`Assert*=` lines in unit-file syntax; systemd usually does not keep
+  which one failed, so all are shown with a note saying how to read them.
 - The **journal** pane (bottom) shows the unit's last 30 log lines and reloads whenever the
   selection changes. `J` hides/shows it (hidden = no journalctl calls). Mouse wheel scrolls it.
 - `L` opens the full journal in journalctl's pager (`journalctl [--user] -u <name> -e`); quit the

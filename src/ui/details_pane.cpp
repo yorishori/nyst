@@ -207,6 +207,24 @@ ftxui::Elements runtimeFields(const Unit& unit) {
     return fields;
 }
 
+bool isTriggeringCondition(const std::string& condition) {
+    return condition.find("=|") != std::string::npos;
+}
+
+// Plain conditions must all hold; "|" (triggering) ones need just one to hold. So when
+// every listed condition is triggering, a skip means none of them held.
+std::string skipReasonIntro(const std::vector<std::string>& conditions, bool knowsWhich) {
+    if (knowsWhich) {
+        return "because this did not hold:";
+    }
+    for (const std::string& condition : conditions) {
+        if (!isTriggeringCondition(condition)) {
+            return "because one of these did not hold:";
+        }
+    }
+    return "because none of these held:";
+}
+
 /// Why a Condition*= check skipped the unit: the failed conditions if systemd kept them,
 /// otherwise all of them, since at least one did not hold.
 ftxui::Elements skippedFields(const Unit& unit) {
@@ -216,9 +234,7 @@ ftxui::Elements skippedFields(const Unit& unit) {
     if (shown.empty()) {
         return fields;
     }
-    fields.push_back(
-        field("", knowsWhich ? "because this did not hold:" : "because one of these did not hold:",
-              ftxui::dim));
+    fields.push_back(field("", skipReasonIntro(shown, knowsWhich), ftxui::dim));
     for (const std::string& condition : shown) {
         fields.push_back(field("", condition, ftxui::color(ftxui::Color::Yellow)));
     }
