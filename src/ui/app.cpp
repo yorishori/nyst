@@ -17,6 +17,7 @@
 
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace nyst {
 
@@ -64,7 +65,7 @@ private:
     ftxui::Element renderSearchBox();
     ftxui::Element renderDetailsPane() const;
     ftxui::Element renderStatusBar() const;
-    std::string keyHints() const;
+    std::vector<std::string> keyHints() const;
 
     UnitGraph graph_;
     std::string statusMessage_;
@@ -381,26 +382,30 @@ ftxui::Element Application::renderHeader() {
     return hbox({renderSearchBox(), hbox(labels) | vcenter | flex});
 }
 
+// A flexbox so that, on a narrow terminal, whole hints wrap onto extra lines
+// instead of the end of the bar being cut off.
 ftxui::Element Application::renderStatusBar() const {
     using namespace ftxui;
-    return hbox({
-        text(" " + statusMessage_),
-        filler(),
-        text(keyHints() + " ") | dim,
-    });
+    Elements items = {text(statusMessage_)};
+    for (const std::string& hint : keyHints()) {
+        items.push_back(text(hint) | dim);
+    }
+    FlexboxConfig layout;
+    layout.SetGap(3, 0);
+    return flexbox(items, layout) | xflex;
 }
 
-std::string Application::keyHints() const {
+std::vector<std::string> Application::keyHints() const {
     switch (mode_) {
     case InputMode::Search:
-        return "Enter keep · Esc clear · ↑↓ move";
+        return {"Enter keep", "Esc clear", "↑↓ move"};
     case InputMode::FilterPanel:
-        return "Space/click toggle · p problems · Esc/click outside close";
+        return {"Space/click toggle", "p problems", "Esc/click outside close"};
     case InputMode::Tree:
         break;
     }
-    return "/ search · F filters · p problems · d direction · Enter focus · J journal · "
-           "L full log · u reload · q quit";
+    return {"/ search",  "F filters",  "p problems", "d direction", "Enter focus",
+            "J journal", "L full log", "u reload",   "q quit"};
 }
 
 } // namespace
