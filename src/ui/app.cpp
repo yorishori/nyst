@@ -2,8 +2,11 @@
 #include "ui/app.hpp"
 
 #include "model/unit_graph.hpp"
+#include "source/journal.hpp"
 #include "source/loader.hpp"
+#include "ui/details_pane.hpp"
 #include "ui/filters.hpp"
+#include "ui/journal_pane.hpp"
 #include "ui/tree_view.hpp"
 #include "util/debug_log.hpp"
 
@@ -50,18 +53,23 @@ private:
     bool handleFilterPanelEvent(const ftxui::Event& event);
     bool handleMovementKey(const ftxui::Event& event);
     bool handleTreeKey(const ftxui::Event& event);
+    bool handlePaneKey(const ftxui::Event& event);
+    void openFullJournal();
+    const Unit* selectedUnit() const;
     bool handleMouseEvent(ftxui::Event event);
     bool handleHeaderClick(const ftxui::Mouse& mouse);
 
     ftxui::Element render();
     ftxui::Element renderHeader();
     ftxui::Element renderSearchBox();
+    ftxui::Element renderDetailsPane() const;
     ftxui::Element renderStatusBar() const;
     std::string keyHints() const;
 
     UnitGraph graph_;
     std::string statusMessage_;
     TreeView tree_;
+    JournalPane journal_;
     FilterState filters_ = defaultFilters();
     InputMode mode_ = InputMode::Tree;
     // Neither component is attached to the screen: events are routed by mode by hand.
@@ -114,6 +122,25 @@ int Application::run() {
 void Application::reloadUnits() {
     graph_ = loadEverything(statusMessage_);
     tree_.setGraph(&graph_);
+    journal_.invalidate();
+}
+
+const Unit* Application::selectedUnit() const {
+    const Row* row = tree_.selectedRow();
+    return row == nullptr ? nullptr : graph_.find(row->unitKey);
+}
+
+// Leaves the fullscreen UI so journalctl's pager owns the terminal until it exits.
+void Application::openFullJournal() {
+    const Unit* unit = selectedUnit();
+    if (unit == nullptr) {
+        return;
+    }
+    std::string error;
+    screen_->WithRestoredIO([&error, unit] { error = showFullJournal(*unit); })();
+    if (!error.empty()) {
+        statusMessage_ = error;
+    }
 }
 
 void Application::setMode(InputMode mode) {
@@ -154,6 +181,9 @@ bool Application::handleMouseEvent(ftxui::Event event) {
     }
     if (mode_ == InputMode::Search && isLeftClick(mouse)) {
         setMode(InputMode::Tree);
+    }
+    if (journal_.isVisible() && journal_.handleMouse(mouse)) {
+        return true;
     }
     return tree_.handleMouse(mouse);
 }
@@ -225,7 +255,18 @@ bool Application::handleTreeModeEvent(const ftxui::Event& event) {
         reloadUnits();
         return true;
     }
-    return handleMovementKey(event) || handleTreeKey(event);
+    return handleMovementKey(event) || handleTreeKey(event) || handlePaneKey(event);
+}
+
+bool Application::handlePaneKey(const ftxui::Event& event) {
+    if (isCharacter(event, 'J')) {
+        journal_.toggleVisible();
+    } else if (isCharacter(event, 'L')) {
+        openFullJournal();
+    } else {
+        return false;
+    }
+    return true;
 }
 
 bool Application::handleMovementKey(const ftxui::Event& event) {
@@ -273,16 +314,31 @@ bool Application::handleTreeKey(const ftxui::Event& event) {
 ftxui::Element Application::render() {
     using namespace ftxui;
     tree_.setFilters(filters_);
-    Element main = vbox({
+    journal_.showUnit(selectedUnit());
+
+    Elements sections = {
         renderHeader(),
-        window(text(" tree "), tree_.render()) | flex,
-        renderStatusBar(),
-    });
+        hbox({
+            window(text(" tree "), tree_.render()) | flex,
+            renderDetailsPane(),
+        }) | flex,
+    };
+    if (journal_.isVisible()) {
+        sections.push_back(journal_.render());
+    }
+    sections.push_back(renderStatusBar());
+    Element main = vbox(sections);
     if (mode_ != InputMode::FilterPanel) {
         return main;
     }
     Element panel = filterPanel_->Render() | reflect(filterPanelArea_) | clear_under | center;
     return dbox({main, panel});
+}
+
+ftxui::Element Application::renderDetailsPane() const {
+    using namespace ftxui;
+    Element content = renderDetails(selectedUnit(), graph_) | yframe | flex;
+    return window(text(" details "), content) | size(WIDTH, EQUAL, kDetailsPaneWidth);
 }
 
 ftxui::Element Application::renderSearchBox() {
@@ -343,8 +399,8 @@ std::string Application::keyHints() const {
     case InputMode::Tree:
         break;
     }
-    return "/ search · F filters · p problems · d direction · Enter focus · u reload · q quit · "
-           "mouse: click, wheel, header labels";
+    return "/ search · F filters · p problems · d direction · Enter focus · J journal · "
+           "L full log · u reload · q quit";
 }
 
 } // namespace

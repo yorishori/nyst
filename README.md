@@ -4,7 +4,7 @@ A terminal UI that shows every systemd unit on the machine (system and user mana
 navigable dependency tree, with running state, owner, origin (systemd / package / admin / user /
 generated / transient / unowned / missing), and the kind of each dependency.
 
-> Status: milestone 3 (tree view, search, filters). Details/journal and actions are next.
+> Status: milestone 4 (tree, search, filters, details, journal). Actions are next.
 
 ## Build
 
@@ -44,7 +44,17 @@ Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 | `?` | missing | | |
 | `⊘` | masked | | |
 
-## Search and filters
+## Details and journal
+
+- The **details** pane (right) shows everything known about the selected unit: description,
+  manager and user, aliases, load/active/file state, origin and package, fragment/source/drop-in
+  paths, edge counts, and any error hit while reading it.
+- The **journal** pane (bottom) shows the unit's last 30 log lines and reloads whenever the
+  selection changes. `J` hides/shows it (hidden = no journalctl calls). Mouse wheel scrolls it.
+- `L` opens the full journal in journalctl's pager (`journalctl [--user] -u <name> -e`); quit the
+  pager to come back.
+
+
 
 - `/` searches name and description (case-insensitive). `Enter` keeps the search, `Esc` clears it.
 - `F` opens the filter panel: unit type, state, manager, origin, and "only locally modified" /
@@ -64,6 +74,7 @@ units at once, use the reverse direction (`d`), whose top level is a flat, filte
 
 - **Tree:** click a row to select it; click its arrow, or click an already-selected row, to
   expand/collapse. The wheel moves the cursor.
+- **Journal:** the wheel scrolls through the log lines.
 - **Header:** click the search box to type, `[problems ...]` to toggle the problems view,
   `[dir: ...]` to flip the direction, and `[filters: N off]` to open the filter panel.
 - **Filter panel:** click checkboxes and buttons; click outside the panel or `[close]` to close it.
@@ -135,6 +146,8 @@ Working now:
 | `/` | search (`Enter` keeps, `Esc` clears, `↑/↓` move while typing) |
 | `F` | filter panel (arrows move, `Space`/`Enter` toggle, `Esc`/`F` close) |
 | `p` | problems preset |
+| `J` | show / hide the journal pane |
+| `L` | full journal in a pager |
 | `u` | reload all data from systemd |
 | `q` | quit |
 
@@ -142,7 +155,6 @@ Planned:
 
 | Key | Action |
 |---|---|
-| `J` / `L` | journal pane / full journal in pager |
 | `s` / `S` | start / stop |
 | `r` / `R` | restart / reload |
 | `e` / `E` | enable / disable |

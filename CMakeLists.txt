@@ -36,8 +36,11 @@ add_executable(nyst
     src/source/package_db.cpp
     src/source/classifier.cpp
     src/source/loader.cpp
+    src/source/journal.cpp
     src/ui/app.cpp
+    src/ui/details_pane.cpp
     src/ui/filters.cpp
+    src/ui/journal_pane.cpp
     src/ui/tree_view.cpp
 )
 
