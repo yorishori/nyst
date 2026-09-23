@@ -148,6 +148,23 @@ bool hasWarning(const Unit& unit) {
     return !unit.wantedBy.empty() || !unit.droppedByCycle.empty();
 }
 
+std::uint64_t startupDurationUsec(const Unit& unit) {
+    if (unit.activatingUsec == 0) {
+        return 0;
+    }
+    // Same rule as systemd-analyze blame: fall back to "went inactive again" only for
+    // units that never became active at all.
+    if (unit.activeEnterUsec != 0) {
+        return unit.activeEnterUsec > unit.activatingUsec
+                   ? unit.activeEnterUsec - unit.activatingUsec
+                   : 0;
+    }
+    if (unit.inactiveEnterUsec > unit.activatingUsec) {
+        return unit.inactiveEnterUsec - unit.activatingUsec;
+    }
+    return 0;
+}
+
 // Requisite= only checks that the target is already running, and PartOf=/Triggers=
 // never start anything, so they don't count.
 bool pullsIn(EdgeKind kind) {

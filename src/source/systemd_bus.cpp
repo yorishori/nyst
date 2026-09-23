@@ -132,6 +132,8 @@ void applyRuntimeProperties(const PropertyMap& properties, Unit& unit) {
         typedProperty<std::uint64_t>(properties, "InactiveExitTimestampMonotonic", 0);
     unit.activeEnterUsec =
         typedProperty<std::uint64_t>(properties, "ActiveEnterTimestampMonotonic", 0);
+    unit.inactiveEnterUsec =
+        typedProperty<std::uint64_t>(properties, "InactiveEnterTimestampMonotonic", 0);
     unit.conditionUsec = typedProperty<std::uint64_t>(properties, "ConditionTimestampMonotonic", 0);
     unit.conditionResult = typedProperty<bool>(properties, "ConditionResult", true);
 }

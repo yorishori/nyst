@@ -72,6 +72,11 @@ public:
     void toggleSelected();
 
     void toggleDirection();
+
+    /// Switches the reverse list between "failed first, then by name" and "slowest startup
+    /// first" (like systemd-analyze blame). Turning it on also switches to the reverse list.
+    void toggleStartupSort();
+    bool sortsByStartupTime() const;
     /// Re-roots the tree on the selected unit (Enter).
     void focusSelected();
     /// Returns to the previous root (Backspace).
@@ -121,6 +126,7 @@ private:
 
     const UnitGraph* graph_ = nullptr;
     TreeDirection direction_ = TreeDirection::Forward;
+    bool sortByStartupTime_ = false; // only meaningful in the reverse direction
     FilterState filters_ = defaultFilters();
     std::set<std::string> forwardExpanded_;
     std::set<std::string> reverseExpanded_;

@@ -194,6 +194,10 @@ ftxui::Elements runtimeFields(const Unit& unit) {
         fields.push_back(field("restarts", std::to_string(unit.restartCount),
                                ftxui::color(ftxui::Color::Yellow)));
     }
+    std::uint64_t startup = startupDurationUsec(unit);
+    if (startup != 0) {
+        fields.push_back(field("startup", formatDuration(startup)));
+    }
     if (unit.lastTriggerUsec != 0) {
         fields.push_back(field("last run", formatWallClockWithDistance(unit.lastTriggerUsec)));
     }

@@ -67,18 +67,19 @@ struct Unit {
     std::string error;                // non-empty if reading this unit partially failed
 
     // Runtime details. Zero or empty when unknown or not applicable to the unit type.
-    std::string result;                // success, exit-code, timeout, oom-kill, ...
-    int mainExitKind = 0;              // ExecMainCode: 1 exited, 2 killed, 3 dumped core
-    int mainExitStatus = 0;            // exit code, or signal number when killed/dumped
-    std::uint32_t restartCount = 0;    // automatic restarts (services)
-    std::uint32_t mainPid = 0;         // running main process (services)
-    std::uint64_t memoryBytes = 0;     // current memory use of the unit's cgroup
-    std::uint64_t lastTriggerUsec = 0; // timers: wall clock, microseconds since the epoch
-    std::uint64_t nextElapseUsec = 0;  // timers: wall clock, microseconds since the epoch
-    std::uint64_t activatingUsec = 0;  // monotonic time it last left "inactive"
-    std::uint64_t activeEnterUsec = 0; // monotonic time it last became active
-    std::uint64_t conditionUsec = 0;   // monotonic time its conditions were last checked
-    bool conditionResult = true;       // false if a Condition*= check skipped the unit
+    std::string result;                  // success, exit-code, timeout, oom-kill, ...
+    int mainExitKind = 0;                // ExecMainCode: 1 exited, 2 killed, 3 dumped core
+    int mainExitStatus = 0;              // exit code, or signal number when killed/dumped
+    std::uint32_t restartCount = 0;      // automatic restarts (services)
+    std::uint32_t mainPid = 0;           // running main process (services)
+    std::uint64_t memoryBytes = 0;       // current memory use of the unit's cgroup
+    std::uint64_t lastTriggerUsec = 0;   // timers: wall clock, microseconds since the epoch
+    std::uint64_t nextElapseUsec = 0;    // timers: wall clock, microseconds since the epoch
+    std::uint64_t activatingUsec = 0;    // monotonic time it last left "inactive"
+    std::uint64_t activeEnterUsec = 0;   // monotonic time it last became active
+    std::uint64_t inactiveEnterUsec = 0; // monotonic time it last went back to inactive
+    std::uint64_t conditionUsec = 0;     // monotonic time its conditions were last checked
+    bool conditionResult = true;         // false if a Condition*= check skipped the unit
 
     // Diagnostics, filled in by UnitGraph::rebuildDiagnostics(). Names of active units that
     // pull this one in although it never started this boot; empty if nothing is suspicious.
@@ -106,6 +107,10 @@ bool neverStartedThisBoot(const Unit& unit);
 /// True if the unit has a diagnostic worth a ⚠: never started though wanted, or its start
 /// job was dropped at boot by an ordering cycle.
 bool hasWarning(const Unit& unit);
+
+/// How long the unit's last start took, like `systemd-analyze blame`: until it became active,
+/// or until it gave up and went inactive again (failed units). Microseconds; 0 if unknown.
+std::uint64_t startupDurationUsec(const Unit& unit);
 
 /// Pull-in dependencies: ones that make systemd start the target (Wants=, Requires=, ...).
 bool pullsIn(EdgeKind kind);

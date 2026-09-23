@@ -33,6 +33,9 @@ cmake --build build -j
 - **Reverse** (`d`): a flat list of every unit, failed first. Children are who needs the unit
   (`required-by`, `wanted-by`, ...).
 - `↻` marks a unit that already appears above it on the same branch (a dependency cycle).
+- `b` sorts the reverse list by **startup time**, slowest first, like `systemd-analyze blame`,
+  and shows each unit's time on its row (the details pane always shows it). Pressing `b` again,
+  or flipping to the forward tree, goes back to "failed first, then by name".
 
 Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 
@@ -118,7 +121,7 @@ effect on the next boot.
   expand/collapse. The wheel moves the cursor.
 - **Details and journal:** the wheel scrolls them.
 - **Header:** click the search box to type, `[problems ...]` to toggle the problems view,
-  `[dir: ...]` to flip the direction, and `[filters: N off]` to open the filter panel.
+  `[dir: ...]` to flip the direction, `[sort: ...]` to toggle the startup-time sort, and `[filters: N off]` to open the filter panel.
 - **Filter panel:** click checkboxes and buttons; click outside the panel or `[close]` to close it.
 - **Dialogs:** click `[yes]`/`[no]`; a click outside the confirmation cancels, any click closes help.
 
@@ -188,6 +191,7 @@ All keys:
 | `Space` | toggle expand |
 | `Enter` / `Backspace` | focus on unit / go back |
 | `d` | toggle tree direction |
+| `b` | sort by startup time (blame) |
 | `/` | search (`Enter` keeps, `Esc` clears, `↑/↓` move while typing) |
 | `F` | filter panel (arrows move, `Space`/`Enter` toggle, `Esc`/`F` close) |
 | `p` | problems preset |

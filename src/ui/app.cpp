@@ -113,6 +113,7 @@ private:
     ftxui::Box problemsLabelArea_;
     ftxui::Box directionLabelArea_;
     ftxui::Box filtersLabelArea_;
+    ftxui::Box sortLabelArea_;
     ftxui::Box filterPanelArea_;
     ftxui::Box confirmDialogArea_;
     ftxui::Box detailsArea_;
@@ -397,6 +398,8 @@ bool Application::handleHeaderClick(const ftxui::Mouse& mouse) {
         setMode(InputMode::FilterPanel);
     } else if (directionLabelArea_.Contain(mouse.x, mouse.y)) {
         tree_.toggleDirection();
+    } else if (sortLabelArea_.Contain(mouse.x, mouse.y)) {
+        tree_.toggleStartupSort();
     } else if (problemsLabelArea_.Contain(mouse.x, mouse.y)) {
         filters_.problemsOnly = !filters_.problemsOnly;
     } else {
@@ -512,6 +515,8 @@ bool Application::handleTreeKey(const ftxui::Event& event) {
         tree_.goBack();
     } else if (isCharacter(event, 'd')) {
         tree_.toggleDirection();
+    } else if (isCharacter(event, 'b')) {
+        tree_.toggleStartupSort();
     } else {
         return false;
     }
@@ -629,6 +634,8 @@ ftxui::Element Application::renderHeader() {
     labels.push_back(problems | reflect(problemsLabelArea_));
     labels.push_back(text("[dir: " + toString(tree_.direction()) + "]") |
                      reflect(directionLabelArea_));
+    std::string sortName = tree_.sortsByStartupTime() ? "startup time" : "name";
+    labels.push_back(text("[sort: " + sortName + "]") | reflect(sortLabelArea_));
     labels.push_back(text("[filters: " + std::to_string(countDisabledFilters(filters_)) + " off]") |
                      reflect(filtersLabelArea_));
 
@@ -673,6 +680,7 @@ std::vector<std::string> Application::keyHints() const {
             "F filters",
             "p problems",
             "d direction",
+            "b sort by startup",
             "Enter focus",
             "J journal",
             "L full log",

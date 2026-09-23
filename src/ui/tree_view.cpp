@@ -1,6 +1,8 @@
 // Tree expansion state, flattening into visible rows, cursor, and row rendering.
 #include "ui/tree_view.hpp"
 
+#include "ui/format.hpp"
+
 #include <algorithm>
 #include <deque>
 
@@ -55,6 +57,15 @@ bool failedFirstThenByName(const Unit* left, const Unit* right) {
     }
     if (left->name != right->name) {
         return left->name < right->name;
+    }
+    return left->key < right->key;
+}
+
+bool slowestStartupFirst(const Unit* left, const Unit* right) {
+    std::uint64_t leftDuration = startupDurationUsec(*left);
+    std::uint64_t rightDuration = startupDurationUsec(*right);
+    if (leftDuration != rightDuration) {
+        return leftDuration > rightDuration;
     }
     return left->key < right->key;
 }
@@ -189,12 +200,31 @@ void TreeView::toggleSelected() {
 void TreeView::toggleDirection() {
     direction_ =
         direction_ == TreeDirection::Forward ? TreeDirection::Reverse : TreeDirection::Forward;
+    if (direction_ == TreeDirection::Forward) {
+        sortByStartupTime_ = false;
+    }
     std::string focused = focusedUnitKey();
     if (!focused.empty()) {
         expandedPaths().insert(focused);
     }
     refreshSearchExpansion();
     rebuildRows();
+}
+
+void TreeView::toggleStartupSort() {
+    sortByStartupTime_ = !sortByStartupTime_;
+    if (sortByStartupTime_ && direction_ == TreeDirection::Forward) {
+        toggleDirection();
+        sortByStartupTime_ = true;
+    }
+    rebuildRows();
+    if (sortByStartupTime_) {
+        moveCursorToStart();
+    }
+}
+
+bool TreeView::sortsByStartupTime() const {
+    return sortByStartupTime_ && direction_ == TreeDirection::Reverse;
 }
 
 void TreeView::focusSelected() {
@@ -259,7 +289,8 @@ std::vector<TreeNode> TreeView::reverseTopLevel() const {
     for (const auto& [key, unit] : graph_->allUnits()) {
         units.push_back(&unit);
     }
-    std::sort(units.begin(), units.end(), failedFirstThenByName);
+    std::sort(units.begin(), units.end(),
+              sortByStartupTime_ ? slowestStartupFirst : failedFirstThenByName);
 
     std::vector<TreeNode> nodes;
     for (const Unit* unit : units) {
@@ -634,7 +665,7 @@ ftxui::Element renderGroupRow(const Row& row, ftxui::Elements left) {
 }
 
 ftxui::Element renderUnitRow(const Row& row, const Unit& unit, TreeDirection direction,
-                             ftxui::Elements left) {
+                             bool showStartupTime, ftxui::Elements left) {
     using namespace ftxui;
     left.push_back(stateIcon(unit));
     left.push_back(text(" "));
@@ -650,7 +681,12 @@ ftxui::Element renderUnitRow(const Row& row, const Unit& unit, TreeDirection dir
         left.push_back(text("   " + edge) | dim);
     }
 
-    Elements right = {originTag(unit)};
+    Elements right;
+    std::uint64_t startup = startupDurationUsec(unit);
+    if (showStartupTime && startup > 0) {
+        right.push_back(text(formatDuration(startup) + "  ") | color(Color::Yellow));
+    }
+    right.push_back(originTag(unit));
     if (hasWarning(unit)) {
         right.push_back(text(" ⚠") | color(Color::Yellow) | bold);
     }
@@ -664,7 +700,8 @@ ftxui::Element renderUnitRow(const Row& row, const Unit& unit, TreeDirection dir
     return hbox({hbox(left), filler(), hbox(right)});
 }
 
-ftxui::Element renderRow(const Row& row, const UnitGraph& graph, TreeDirection direction) {
+ftxui::Element renderRow(const Row& row, const UnitGraph& graph, TreeDirection direction,
+                         bool showStartupTime) {
     using namespace ftxui;
     Elements left = {text(std::string(static_cast<std::size_t>(row.depth) * 2, ' ')),
                      text(expandArrow(row) + " ")};
@@ -676,7 +713,7 @@ ftxui::Element renderRow(const Row& row, const UnitGraph& graph, TreeDirection d
         left.push_back(text(row.unitKey) | color(Color::Red));
         return hbox(left);
     }
-    return renderUnitRow(row, *unit, direction, left);
+    return renderUnitRow(row, *unit, direction, showStartupTime, left);
 }
 
 } // namespace
@@ -690,7 +727,8 @@ ftxui::Element TreeView::render() const {
     rowBoxes_.assign(rows_.size(), Box{});
     Elements lines;
     for (int index = 0; index < static_cast<int>(rows_.size()); ++index) {
-        Element line = renderRow(rows_[index], *graph_, direction_) | reflect(rowBoxes_[index]);
+        Element line = renderRow(rows_[index], *graph_, direction_, sortsByStartupTime()) |
+                       reflect(rowBoxes_[index]);
         if (rows_[index].isContextOnly) {
             line = line | dim;
         }
