@@ -4,7 +4,9 @@
 #include "model/unit_graph.hpp"
 #include "ui/filters.hpp"
 
+#include <ftxui/component/mouse.hpp>
 #include <ftxui/dom/elements.hpp>
+#include <ftxui/screen/box.hpp>
 
 #include <set>
 #include <string>
@@ -74,6 +76,10 @@ public:
 
     ftxui::Element render() const;
 
+    /// Wheel scrolls; a click selects a row, and a click on its arrow or on the
+    /// already-selected row toggles it. Returns false if the mouse is outside the tree.
+    bool handleMouse(const ftxui::Mouse& mouse);
+
 private:
     struct FocusEntry {
         std::string unitKey;
@@ -111,6 +117,9 @@ private:
     std::vector<std::string> notLoadedKeys_;
     std::vector<Row> rows_;
     int cursor_ = 0;
+    // Filled in by the renderer during layout; mutable because render() is const.
+    mutable ftxui::Box frameBox_;
+    mutable std::vector<ftxui::Box> rowBoxes_;
     bool hasExpandedInitialRoots_ = false;
 };
 

@@ -5,6 +5,7 @@
 
 #include <ftxui/component/component_base.hpp>
 
+#include <functional>
 #include <map>
 #include <string>
 
@@ -37,7 +38,14 @@ bool isProblem(const Unit& unit, const UnitGraph& graph);
 /// Number of unchecked boxes plus active "only" flags, for the header.
 int countDisabledFilters(const FilterState& filters);
 
+/// Turns every value in the group on, or all off if they are all on already.
+void toggleAll(std::map<std::string, bool>& values);
+
+/// toggleAll across every checkbox group at once. The "only" flags are left alone.
+void toggleAllGroups(FilterState& filters);
+
 /// Checkbox panel that edits filters in place. filters must outlive the component.
-ftxui::Component makeFilterPanel(FilterState& filters);
+/// onClose runs when the panel's close button is clicked.
+ftxui::Component makeFilterPanel(FilterState& filters, std::function<void()> onClose);
 
 } // namespace nyst

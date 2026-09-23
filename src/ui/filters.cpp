@@ -106,9 +106,26 @@ int countUnchecked(const std::map<std::string, bool>& values) {
     return unchecked;
 }
 
+// ftxui's Ascii button only shows brackets while focused; always showing them makes
+// the buttons recognisable as clickable.
+ftxui::ButtonOption bracketButtonStyle() {
+    ftxui::ButtonOption option;
+    option.transform = [](const ftxui::EntryState& state) {
+        ftxui::Element label = ftxui::text("[" + state.label + "]");
+        return state.focused ? label | ftxui::inverted : label | ftxui::color(ftxui::Color::Cyan);
+    };
+    return option;
+}
+
+bool allChecked(const std::map<std::string, bool>& values) {
+    return countUnchecked(values) == 0;
+}
+
 ftxui::Component makeCheckboxGroup(const std::string& title, const std::vector<std::string>& keys,
                                    std::map<std::string, bool>& values) {
     ftxui::Components boxes;
+    boxes.push_back(
+        ftxui::Button("toggle all", [&values] { toggleAll(values); }, bracketButtonStyle()));
     for (const std::string& key : keys) {
         boxes.push_back(ftxui::Checkbox(key, &values[key]));
     }
@@ -186,7 +203,25 @@ int countDisabledFilters(const FilterState& filters) {
     return disabled;
 }
 
-ftxui::Component makeFilterPanel(FilterState& filters) {
+void toggleAll(std::map<std::string, bool>& values) {
+    bool turnOn = !allChecked(values);
+    for (auto& [key, enabled] : values) {
+        enabled = turnOn;
+    }
+}
+
+void toggleAllGroups(FilterState& filters) {
+    bool turnOn = !(allChecked(filters.unitTypes) && allChecked(filters.activeStates) &&
+                    allChecked(filters.managers) && allChecked(filters.origins));
+    for (std::map<std::string, bool>* group :
+         {&filters.unitTypes, &filters.activeStates, &filters.managers, &filters.origins}) {
+        for (auto& [key, enabled] : *group) {
+            enabled = turnOn;
+        }
+    }
+}
+
+ftxui::Component makeFilterPanel(FilterState& filters, std::function<void()> onClose) {
     ftxui::Component groups = ftxui::Container::Horizontal({
         makeCheckboxGroup("unit type", allUnitTypes(), filters.unitTypes),
         makeCheckboxGroup("state", kActiveStateGroups, filters.activeStates),
@@ -194,13 +229,23 @@ ftxui::Component makeFilterPanel(FilterState& filters) {
         makeCheckboxGroup("origin", originNames(), filters.origins),
         makeFlagGroup(filters),
     });
-    return ftxui::Renderer(groups, [groups] {
+    ftxui::Component toggleEverything = ftxui::Button(
+        "toggle all groups", [&filters] { toggleAllGroups(filters); }, bracketButtonStyle());
+    ftxui::Component close = ftxui::Button("close", onClose, bracketButtonStyle());
+    ftxui::Component layout = ftxui::Container::Vertical({
+        groups,
+        ftxui::Container::Horizontal({toggleEverything, close}),
+    });
+
+    return ftxui::Renderer(layout, [groups, toggleEverything, close] {
         using namespace ftxui;
-        return window(text(" filters ") | bold,
-                      vbox({
-                          groups->Render(),
-                          text(" arrows move · Space/Enter toggle · Esc or F closes ") | dim,
-                      }));
+        Element footer = hbox({
+            toggleEverything->Render(),
+            text("  arrows/mouse move · Space/Enter/click toggle · Esc or F closes  ") | dim,
+            filler(),
+            close->Render(),
+        });
+        return window(text(" filters ") | bold, vbox({groups->Render(), footer}));
     });
 }
 

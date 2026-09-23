@@ -49,6 +49,8 @@ Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 - `/` searches name and description (case-insensitive). `Enter` keeps the search, `Esc` clears it.
 - `F` opens the filter panel: unit type, state, manager, origin, and "only locally modified" /
   "only masked". `device`, `scope`, and `slice` are off by default because they are mostly noise.
+  Each group has a `[toggle all]` button, and `[toggle all groups]` flips every group at once
+  (all on, or all off if everything is already on). The "only" flags are not affected.
 - `p` toggles the **problems** view: failed units, missing units, units whose file could not be
   parsed, `unowned` units, and masked units that another unit requires. It ignores the checkboxes
   so nothing broken can hide behind a type filter.
@@ -57,6 +59,14 @@ A row is shown if it passes the filters or if something in its *expanded* subtre
 only for context are dimmed. In the forward tree the roots and groups always stay visible, and the
 group counts show how many members pass (e.g. `Not loaded (3 of 275)`). To search across **all**
 units at once, use the reverse direction (`d`), whose top level is a flat, filtered list.
+
+## Mouse
+
+- **Tree:** click a row to select it; click its arrow, or click an already-selected row, to
+  expand/collapse. The wheel moves the cursor.
+- **Header:** click the search box to type, `[problems ...]` to toggle the problems view,
+  `[dir: ...]` to flip the direction, and `[filters: N off]` to open the filter panel.
+- **Filter panel:** click checkboxes and buttons; click outside the panel or `[close]` to close it.
 
 ## `--dump`
 

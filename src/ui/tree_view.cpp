@@ -11,6 +11,7 @@ const char* const kUnreachableGroupId = "group:unreachable";
 const char* const kNotLoadedGroupId = "group:not-loaded";
 const char* const kSystemRootKey = "system:default.target";
 const char* const kUserRootKey = "user:default.target";
+const int kWheelStep = 3;
 
 TreeNode makeUnitNode(const std::string& unitKey, const std::string& label) {
     TreeNode node;
@@ -591,9 +592,10 @@ ftxui::Element TreeView::render() const {
         return text("no units match the filters") | dim | center | flex;
     }
 
+    rowBoxes_.assign(rows_.size(), Box{});
     Elements lines;
     for (int index = 0; index < static_cast<int>(rows_.size()); ++index) {
-        Element line = renderRow(rows_[index], *graph_, direction_);
+        Element line = renderRow(rows_[index], *graph_, direction_) | reflect(rowBoxes_[index]);
         if (rows_[index].isContextOnly) {
             line = line | dim;
         }
@@ -602,7 +604,40 @@ ftxui::Element TreeView::render() const {
         }
         lines.push_back(line);
     }
-    return vbox(lines) | vscroll_indicator | yframe | flex;
+    return vbox(lines) | vscroll_indicator | yframe | reflect(frameBox_) | flex;
+}
+
+bool TreeView::handleMouse(const ftxui::Mouse& mouse) {
+    using ftxui::Mouse;
+    if (!frameBox_.Contain(mouse.x, mouse.y)) {
+        return false;
+    }
+    if (mouse.button == Mouse::WheelUp || mouse.button == Mouse::WheelDown) {
+        moveCursor(mouse.button == Mouse::WheelUp ? -kWheelStep : kWheelStep);
+        return true;
+    }
+    if (mouse.button != Mouse::Left || mouse.motion != Mouse::Pressed) {
+        return false;
+    }
+
+    // Rows scrolled out of view still have boxes, but outside frameBox_, so the
+    // Contain check above keeps clicks from reaching them.
+    int rowCount = static_cast<int>(std::min(rows_.size(), rowBoxes_.size()));
+    for (int index = 0; index < rowCount; ++index) {
+        const ftxui::Box& box = rowBoxes_[index];
+        if (!box.Contain(mouse.x, mouse.y)) {
+            continue;
+        }
+        int arrowColumn = box.x_min + rows_[index].depth * 2;
+        bool clickedArrow = mouse.x >= arrowColumn && mouse.x <= arrowColumn + 1;
+        bool wasSelected = index == cursor_;
+        cursor_ = index;
+        if (clickedArrow || wasSelected) {
+            toggleSelected();
+        }
+        return true;
+    }
+    return false;
 }
 
 } // namespace nyst

@@ -50,10 +50,12 @@ private:
     bool handleFilterPanelEvent(const ftxui::Event& event);
     bool handleMovementKey(const ftxui::Event& event);
     bool handleTreeKey(const ftxui::Event& event);
+    bool handleMouseEvent(ftxui::Event event);
+    bool handleHeaderClick(const ftxui::Mouse& mouse);
 
     ftxui::Element render();
-    ftxui::Element renderHeader() const;
-    ftxui::Element renderSearchBox() const;
+    ftxui::Element renderHeader();
+    ftxui::Element renderSearchBox();
     ftxui::Element renderStatusBar() const;
     std::string keyHints() const;
 
@@ -66,7 +68,18 @@ private:
     ftxui::Component searchInput_;
     ftxui::Component filterPanel_;
     ftxui::ScreenInteractive* screen_ = nullptr;
+
+    // Screen areas from the last frame, for mouse hit-testing.
+    ftxui::Box searchBoxArea_;
+    ftxui::Box problemsLabelArea_;
+    ftxui::Box directionLabelArea_;
+    ftxui::Box filtersLabelArea_;
+    ftxui::Box filterPanelArea_;
 };
+
+bool isLeftClick(const ftxui::Mouse& mouse) {
+    return mouse.button == ftxui::Mouse::Left && mouse.motion == ftxui::Mouse::Pressed;
+}
 
 bool isCharacter(const ftxui::Event& event, char character) {
     return event == ftxui::Event::Character(character);
@@ -78,7 +91,7 @@ Application::Application() {
     searchOptions.placeholder = "name or description";
     searchOptions.multiline = false;
     searchInput_ = ftxui::Input(searchOptions);
-    filterPanel_ = makeFilterPanel(filters_);
+    filterPanel_ = makeFilterPanel(filters_, [this] { setMode(InputMode::Tree); });
 }
 
 int Application::run() {
@@ -109,6 +122,9 @@ void Application::setMode(InputMode mode) {
 }
 
 bool Application::handleEvent(const ftxui::Event& event) {
+    if (event.is_mouse()) {
+        return handleMouseEvent(event);
+    }
     switch (mode_) {
     case InputMode::Search:
         return handleSearchEvent(event);
@@ -118,6 +134,43 @@ bool Application::handleEvent(const ftxui::Event& event) {
         break;
     }
     return handleTreeModeEvent(event);
+}
+
+// Takes the event by value: ftxui only exposes the mouse data through a non-const accessor.
+bool Application::handleMouseEvent(ftxui::Event event) {
+    const ftxui::Mouse& mouse = event.mouse();
+    if (mode_ == InputMode::FilterPanel) {
+        if (isLeftClick(mouse) && !filterPanelArea_.Contain(mouse.x, mouse.y)) {
+            setMode(InputMode::Tree);
+            return true;
+        }
+        return filterPanel_->OnEvent(event);
+    }
+    if (mode_ == InputMode::Search && searchBoxArea_.Contain(mouse.x, mouse.y)) {
+        return searchInput_->OnEvent(event);
+    }
+    if (isLeftClick(mouse) && handleHeaderClick(mouse)) {
+        return true;
+    }
+    if (mode_ == InputMode::Search && isLeftClick(mouse)) {
+        setMode(InputMode::Tree);
+    }
+    return tree_.handleMouse(mouse);
+}
+
+bool Application::handleHeaderClick(const ftxui::Mouse& mouse) {
+    if (searchBoxArea_.Contain(mouse.x, mouse.y)) {
+        setMode(InputMode::Search);
+    } else if (filtersLabelArea_.Contain(mouse.x, mouse.y)) {
+        setMode(InputMode::FilterPanel);
+    } else if (directionLabelArea_.Contain(mouse.x, mouse.y)) {
+        tree_.toggleDirection();
+    } else if (problemsLabelArea_.Contain(mouse.x, mouse.y)) {
+        filters_.problemsOnly = !filters_.problemsOnly;
+    } else {
+        return false;
+    }
+    return true;
 }
 
 bool Application::handleSearchEvent(const ftxui::Event& event) {
@@ -228,10 +281,11 @@ ftxui::Element Application::render() {
     if (mode_ != InputMode::FilterPanel) {
         return main;
     }
-    return dbox({main, filterPanel_->Render() | clear_under | center});
+    Element panel = filterPanel_->Render() | reflect(filterPanelArea_) | clear_under | center;
+    return dbox({main, panel});
 }
 
-ftxui::Element Application::renderSearchBox() const {
+ftxui::Element Application::renderSearchBox() {
     using namespace ftxui;
     Element content;
     if (mode_ == InputMode::Search) {
@@ -245,10 +299,10 @@ ftxui::Element Application::renderSearchBox() const {
     if (mode_ == InputMode::Search) {
         box = box | color(ftxui::Color::Cyan);
     }
-    return box | size(WIDTH, GREATER_THAN, 40);
+    return box | size(WIDTH, GREATER_THAN, 40) | reflect(searchBoxArea_);
 }
 
-ftxui::Element Application::renderHeader() const {
+ftxui::Element Application::renderHeader() {
     using namespace ftxui;
     Elements labels;
     std::string focused = tree_.focusedUnitKey();
@@ -257,12 +311,17 @@ ftxui::Element Application::renderHeader() const {
         labels.push_back(text("  (Backspace to go back)") | dim);
     }
     labels.push_back(filler());
-    if (filters_.problemsOnly) {
-        labels.push_back(text("[problems only] ") | color(Color::Red) | bold);
-    }
-    labels.push_back(text("[dir: " + toString(tree_.direction()) + "] "));
-    labels.push_back(
-        text("[filters: " + std::to_string(countDisabledFilters(filters_)) + " off] "));
+    // Every label is always present so it can be clicked to toggle.
+    Element problems = filters_.problemsOnly ? text("[problems only]") | color(Color::Red) | bold
+                                             : text("[problems: off]") | dim;
+    labels.push_back(problems | reflect(problemsLabelArea_));
+    labels.push_back(text(" "));
+    labels.push_back(text("[dir: " + toString(tree_.direction()) + "]") |
+                     reflect(directionLabelArea_));
+    labels.push_back(text(" "));
+    labels.push_back(text("[filters: " + std::to_string(countDisabledFilters(filters_)) + " off]") |
+                     reflect(filtersLabelArea_));
+    labels.push_back(text(" "));
     return hbox({renderSearchBox(), hbox(labels) | vcenter | flex});
 }
 
@@ -280,11 +339,12 @@ std::string Application::keyHints() const {
     case InputMode::Search:
         return "Enter keep · Esc clear · ↑↓ move";
     case InputMode::FilterPanel:
-        return "Space toggle · p problems · Esc close";
+        return "Space/click toggle · p problems · Esc/click outside close";
     case InputMode::Tree:
         break;
     }
-    return "/ search · F filters · p problems · d direction · Enter focus · u reload · q quit";
+    return "/ search · F filters · p problems · d direction · Enter focus · u reload · q quit · "
+           "mouse: click, wheel, header labels";
 }
 
 } // namespace
