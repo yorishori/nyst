@@ -20,8 +20,9 @@
 #include <algorithm>
 #include <cctype>
 #include <functional>
-#include <iostream>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace nyst {
@@ -50,13 +51,20 @@ std::string toString(InputMode mode) {
     return "unknown";
 }
 
+/// What the background loader hands back to the UI thread.
+struct LoadResult {
+    UnitGraph graph;
+    std::string statusMessage;
+};
+
 class Application {
 public:
     Application();
     int run();
 
 private:
-    void reloadUnits();
+    void startReload();
+    void applyLoadResult(LoadResult& result);
     void setMode(InputMode mode);
     bool handleEvent(const ftxui::Event& event);
     bool handleTreeModeEvent(const ftxui::Event& event);
@@ -91,6 +99,10 @@ private:
 
     UnitGraph graph_;
     std::string statusMessage_;
+    // Loading runs on loaderThread_; these two are only touched on the UI thread.
+    std::thread loaderThread_;
+    bool loading_ = false;
+    bool reloadQueued_ = false;
     TreeView tree_;
     JournalPane journal_;
     FilterState filters_ = defaultFilters();
@@ -178,26 +190,54 @@ Application::Application() {
 }
 
 int Application::run() {
-    std::cerr << "nyst: loading units..." << std::endl;
-    reloadUnits();
-
     auto screen = ftxui::ScreenInteractive::Fullscreen();
     screen_ = &screen;
+    startReload();
 
     auto renderer = ftxui::Renderer([this] { return render(); });
     auto component = ftxui::CatchEvent(
         renderer, [this](const ftxui::Event& event) { return handleEvent(event); });
     screen.Loop(component);
 
+    // A load may still be running and about to Post to the screen; let it finish first.
+    if (loaderThread_.joinable()) {
+        loaderThread_.join();
+    }
     screen_ = nullptr;
     return 0;
 }
 
-// The tree keeps a pointer into graph_, so refresh it after every load.
-void Application::reloadUnits() {
-    graph_ = loadEverything(statusMessage_);
+// Loads on a background thread so the UI stays responsive; the result is handed back
+// through screen_->Post, so graph_ is only ever touched on the UI thread.
+void Application::startReload() {
+    if (loading_) {
+        reloadQueued_ = true;
+        return;
+    }
+    loading_ = true;
+    if (loaderThread_.joinable()) {
+        loaderThread_.join();
+    }
+    ftxui::ScreenInteractive* screen = screen_;
+    loaderThread_ = std::thread([this, screen] {
+        auto result = std::make_shared<LoadResult>();
+        result->graph = loadEverything(result->statusMessage);
+        screen->Post([this, result] { applyLoadResult(*result); });
+        screen->PostEvent(ftxui::Event::Custom);
+    });
+}
+
+// The tree keeps a pointer into graph_, so it is re-pointed after every load.
+void Application::applyLoadResult(LoadResult& result) {
+    graph_ = std::move(result.graph);
+    statusMessage_ = result.statusMessage;
     tree_.setGraph(&graph_);
     journal_.invalidate();
+    loading_ = false;
+    if (reloadQueued_) {
+        reloadQueued_ = false;
+        startReload();
+    }
 }
 
 const Unit* Application::selectedUnit() const {
@@ -285,7 +325,7 @@ void Application::runPendingAction() {
     screen_->WithRestoredIO([&exitCode, command] { exitCode = command(); })();
     pendingCommand_ = nullptr;
 
-    reloadUnits();
+    startReload();
     if (exitCode == 0) {
         setNotice(pendingDescription_ + ": done", false);
     } else {
@@ -461,7 +501,7 @@ bool Application::handleTreeModeEvent(const ftxui::Event& event) {
         return true;
     }
     if (isCharacter(event, 'u')) {
-        reloadUnits();
+        startReload();
         return true;
     }
     return handleMovementKey(event) || handleTreeKey(event) || handlePaneKey(event) ||
@@ -650,7 +690,11 @@ ftxui::Element Application::renderHeader() {
 // instead of the end of the bar being cut off.
 ftxui::Element Application::renderStatusBar() const {
     using namespace ftxui;
-    Elements items = {text(statusMessage_)};
+    Elements items;
+    if (loading_) {
+        items.push_back(text("loading units...") | color(Color::Cyan) | bold);
+    }
+    items.push_back(text(statusMessage_));
     if (!noticeMessage_.empty()) {
         Color noticeColor = noticeIsError_ ? Color::Red : Color::Green;
         items.push_back(text(noticeMessage_) | color(noticeColor) | bold);

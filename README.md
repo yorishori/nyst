@@ -25,6 +25,13 @@ cmake --build build -j
 ./build/nyst --dump   # data layer only
 ```
 
+## Loading
+
+nyst opens immediately and loads in the background (about 2 s); the tree says "loading
+units..." until the data arrives. Reloads (`u`, and the one after every action) also run in the
+background: you keep browsing the old data, with "loading units..." in the status bar, until the
+new data replaces it. Quitting during a load waits for it to finish.
+
 ## The tree
 
 - **Forward** (default): `System` and `User (<name>)` are the two `default.target`s. Children are

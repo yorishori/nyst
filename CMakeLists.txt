@@ -10,6 +10,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 find_package(PkgConfig REQUIRED)
+find_package(Threads REQUIRED)
 pkg_check_modules(SDBUS REQUIRED IMPORTED_TARGET sdbus-c++>=2)
 pkg_check_modules(ALPM REQUIRED IMPORTED_TARGET libalpm)
 
@@ -55,6 +56,7 @@ target_compile_options(nyst PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(nyst PRIVATE
     PkgConfig::SDBUS
     PkgConfig::ALPM
+    Threads::Threads
     ftxui::component
     ftxui::dom
     ftxui::screen

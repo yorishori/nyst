@@ -720,7 +720,10 @@ ftxui::Element renderRow(const Row& row, const UnitGraph& graph, TreeDirection d
 
 ftxui::Element TreeView::render() const {
     using namespace ftxui;
-    if (graph_ == nullptr || rows_.empty()) {
+    if (graph_ == nullptr) {
+        return text("loading units...") | dim | center | flex;
+    }
+    if (rows_.empty()) {
         return text("no units match the filters") | dim | center | flex;
     }
 

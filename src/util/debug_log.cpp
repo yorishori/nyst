@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <mutex>
 #include <sstream>
 
 namespace nyst {
@@ -48,6 +49,10 @@ void debugLog(const std::string& message) {
     if (!enabled) {
         return;
     }
+
+    // The loader runs on a background thread, so two threads can log at the same time.
+    static std::mutex fileMutex;
+    std::lock_guard<std::mutex> lock(fileMutex);
 
     std::filesystem::path path = logFilePath();
     std::error_code ignored;
