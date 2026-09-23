@@ -529,27 +529,30 @@ ftxui::Element Application::renderSearchBox() {
     return box | size(WIDTH, GREATER_THAN, 40) | reflect(searchBoxArea_);
 }
 
+// The labels are a right-aligned flexbox beside the search box, so on a narrow terminal
+// they wrap onto extra lines in that column instead of being cut off or pushed under it.
 ftxui::Element Application::renderHeader() {
     using namespace ftxui;
     Elements labels;
     std::string focused = tree_.focusedUnitKey();
     if (!focused.empty()) {
-        labels.push_back(text(" focus: " + focused) | color(Color::Cyan));
-        labels.push_back(text("  (Backspace to go back)") | dim);
+        labels.push_back(text("focus: " + focused) | color(Color::Cyan));
+        labels.push_back(text("(Backspace to go back)") | dim);
     }
-    labels.push_back(filler());
     // Every label is always present so it can be clicked to toggle.
     Element problems = filters_.problemsOnly ? text("[problems only]") | color(Color::Red) | bold
                                              : text("[problems: off]") | dim;
     labels.push_back(problems | reflect(problemsLabelArea_));
-    labels.push_back(text(" "));
     labels.push_back(text("[dir: " + toString(tree_.direction()) + "]") |
                      reflect(directionLabelArea_));
-    labels.push_back(text(" "));
     labels.push_back(text("[filters: " + std::to_string(countDisabledFilters(filters_)) + " off]") |
                      reflect(filtersLabelArea_));
-    labels.push_back(text(" "));
-    return hbox({renderSearchBox(), hbox(labels) | vcenter | flex});
+
+    FlexboxConfig layout;
+    layout.Set(FlexboxConfig::JustifyContent::FlexEnd);
+    layout.SetGap(1, 0);
+    Element labelArea = flexbox(labels, layout) | vcenter | flex;
+    return hbox({renderSearchBox(), text(" "), labelArea, text(" ")});
 }
 
 // A flexbox so that, on a narrow terminal, whole hints wrap onto extra lines
