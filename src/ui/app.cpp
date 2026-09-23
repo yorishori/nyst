@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -65,6 +66,9 @@ private:
     bool handleHelpEvent(const ftxui::Event& event);
     bool handleActionKey(const ftxui::Event& event);
     void askToRunAction(UnitAction action);
+    void askToReloadDaemon();
+    void askToRun(const std::string& question, const std::string& description,
+                  std::function<int()> command);
     void runPendingAction();
     void setNotice(const std::string& message, bool isError);
     bool handleMovementKey(const ftxui::Event& event);
@@ -97,8 +101,9 @@ private:
     ftxui::Component confirmDialog_; // rebuilt every time it opens
     ftxui::ScreenInteractive* screen_ = nullptr;
 
-    UnitAction pendingAction_ = UnitAction::Start;
-    std::string pendingUnitKey_;
+    // What the confirmation dialog will run on "yes", and how to describe it afterwards.
+    std::function<int()> pendingCommand_;
+    std::string pendingDescription_;
     // Outcome of the last action or command, shown in the status bar until replaced.
     std::string noticeMessage_;
     bool noticeIsError_ = false;
@@ -126,7 +131,7 @@ bool isCharacter(const ftxui::Event& event, char character) {
     return event == ftxui::Event::Character(character);
 }
 
-/// Maps s/S/r/R/e/E to their action. Returns false for any other event.
+/// Maps s/S/r/R/e/E/m/M to their action. Returns false for any other event.
 bool actionForKey(const ftxui::Event& event, UnitAction& action) {
     if (isCharacter(event, 's')) {
         action = UnitAction::Start;
@@ -140,6 +145,10 @@ bool actionForKey(const ftxui::Event& event, UnitAction& action) {
         action = UnitAction::Enable;
     } else if (isCharacter(event, 'E')) {
         action = UnitAction::Disable;
+    } else if (isCharacter(event, 'm')) {
+        action = UnitAction::Mask;
+    } else if (isCharacter(event, 'M')) {
+        action = UnitAction::Unmask;
     } else {
         return false;
     }
@@ -237,10 +246,26 @@ void Application::askToRunAction(UnitAction action) {
         setNotice(reason, true);
         return;
     }
-    pendingAction_ = action;
-    pendingUnitKey_ = unit->key;
-    std::string question =
-        capitalized(toString(action)) + " " + unit->name + " (" + toString(unit->manager) + ")?";
+    // A copy, so the command stays valid even if the graph is reloaded meanwhile.
+    Unit target = *unit;
+    askToRun(capitalized(toString(action)) + " " + unit->name + " (" + toString(unit->manager) +
+                 ")?",
+             toString(action) + " " + unit->name,
+             [target, action] { return runActionInTerminal(target, action); });
+}
+
+void Application::askToReloadDaemon() {
+    const Unit* unit = selectedUnit();
+    Manager manager = unit == nullptr ? Manager::System : unit->manager;
+    askToRun("Reload the " + toString(manager) + " manager configuration (daemon-reload)?",
+             toString(manager) + " daemon-reload",
+             [manager] { return runDaemonReloadInTerminal(manager); });
+}
+
+void Application::askToRun(const std::string& question, const std::string& description,
+                           std::function<int()> command) {
+    pendingCommand_ = command;
+    pendingDescription_ = description;
     confirmDialog_ = makeConfirmDialog(
         question, [this] { runPendingAction(); }, [this] { setMode(InputMode::Tree); });
     setMode(InputMode::ConfirmAction);
@@ -251,23 +276,19 @@ void Application::askToRunAction(UnitAction action) {
 // change the state of the units around it too.
 void Application::runPendingAction() {
     setMode(InputMode::Tree);
-    const Unit* unit = graph_.find(pendingUnitKey_);
-    if (unit == nullptr) {
+    if (!pendingCommand_) {
         return;
     }
-    UnitAction action = pendingAction_;
-    std::string name = unit->name;
     int exitCode = -1;
-    screen_->WithRestoredIO(
-        [&exitCode, unit, action] { exitCode = runActionInTerminal(*unit, action); })();
+    std::function<int()> command = pendingCommand_;
+    screen_->WithRestoredIO([&exitCode, command] { exitCode = command(); })();
+    pendingCommand_ = nullptr;
 
     reloadUnits();
     if (exitCode == 0) {
-        setNotice(toString(action) + " " + name + ": done", false);
+        setNotice(pendingDescription_ + ": done", false);
     } else {
-        setNotice(toString(action) + " " + name + ": failed (exit " + std::to_string(exitCode) +
-                      ")",
-                  true);
+        setNotice(pendingDescription_ + ": failed (exit " + std::to_string(exitCode) + ")", true);
     }
 }
 
@@ -316,6 +337,10 @@ bool Application::handleHelpEvent(const ftxui::Event& event) {
 }
 
 bool Application::handleActionKey(const ftxui::Event& event) {
+    if (isCharacter(event, 'D')) {
+        askToReloadDaemon();
+        return true;
+    }
     UnitAction action = UnitAction::Start;
     if (!actionForKey(event, action)) {
         return false;
@@ -644,10 +669,22 @@ std::vector<std::string> Application::keyHints() const {
     case InputMode::Tree:
         break;
     }
-    return {
-        "/ search",           "F filters",  "p problems",  "d direction",    "Enter focus",
-        "J journal",          "L full log", "c unit file", "s/S start/stop", "r/R restart/reload",
-        "e/E enable/disable", "u reload",   "? help",      "q quit"};
+    return {"/ search",
+            "F filters",
+            "p problems",
+            "d direction",
+            "Enter focus",
+            "J journal",
+            "L full log",
+            "c unit file",
+            "s/S start/stop",
+            "r/R restart/reload",
+            "e/E enable/disable",
+            "m/M mask/unmask",
+            "D daemon-reload",
+            "u reload",
+            "? help",
+            "q quit"};
 }
 
 } // namespace

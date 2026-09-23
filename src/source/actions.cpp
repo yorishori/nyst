@@ -10,7 +10,31 @@ namespace nyst {
 namespace {
 
 bool worksOnUnitFiles(UnitAction action) {
-    return action == UnitAction::Enable || action == UnitAction::Disable;
+    return action == UnitAction::Enable || action == UnitAction::Disable ||
+           action == UnitAction::Mask || action == UnitAction::Unmask;
+}
+
+bool isMaskedOnDisk(const Unit& unit) {
+    return isMasked(unit) || unit.unitFileState.rfind("masked", 0) == 0;
+}
+
+void waitForEnter() {
+    std::cout << "Press Enter to return to nyst..." << std::flush;
+    std::string ignored;
+    std::getline(std::cin, ignored);
+}
+
+/// Prints the command, runs it on the terminal, prints the outcome, and waits for Enter.
+int runVisibly(const std::string& command) {
+    std::cout << "\n$ " << command << "\n" << std::flush;
+    int exitCode = runCommand(command);
+    if (exitCode == 0) {
+        std::cout << "\nDone.\n";
+    } else {
+        std::cout << "\nFailed with exit status " << exitCode << ".\n";
+    }
+    waitForEnter();
+    return exitCode;
 }
 
 /// "systemctl [--user] <verb> '<name>'". Single quotes are safe: callers check the name
@@ -21,12 +45,6 @@ std::string systemctlCommand(const Unit& unit, const std::string& verb) {
         command += " --user";
     }
     return command + " " + verb + " '" + unit.name + "'";
-}
-
-void waitForEnter() {
-    std::cout << "Press Enter to return to nyst..." << std::flush;
-    std::string ignored;
-    std::getline(std::cin, ignored);
 }
 
 } // namespace
@@ -45,6 +63,10 @@ std::string toString(UnitAction action) {
         return "enable";
     case UnitAction::Disable:
         return "disable";
+    case UnitAction::Mask:
+        return "mask";
+    case UnitAction::Unmask:
+        return "unmask";
     }
     return "unknown";
 }
@@ -57,7 +79,13 @@ std::string whyActionUnavailable(const Unit& unit, UnitAction action) {
         return unit.name + " has unexpected characters in its name";
     }
     if (!unit.isLoaded && !worksOnUnitFiles(action)) {
-        return unit.name + " is not loaded; only enable/disable work on it";
+        return unit.name + " is not loaded; only enable/disable/mask/unmask work on it";
+    }
+    if (action == UnitAction::Mask && isMaskedOnDisk(unit)) {
+        return unit.name + " is already masked";
+    }
+    if (action == UnitAction::Unmask && !isMaskedOnDisk(unit)) {
+        return unit.name + " is not masked";
     }
     return "";
 }
@@ -70,16 +98,13 @@ int runActionInTerminal(const Unit& unit, UnitAction action) {
         return -1;
     }
 
-    std::string command = systemctlCommand(unit, toString(action));
-    std::cout << "\n$ " << command << "\n" << std::flush;
-    int exitCode = runCommand(command);
-    if (exitCode == 0) {
-        std::cout << "\nDone.\n";
-    } else {
-        std::cout << "\nFailed with exit status " << exitCode << ".\n";
-    }
-    waitForEnter();
-    return exitCode;
+    return runVisibly(systemctlCommand(unit, toString(action)));
+}
+
+int runDaemonReloadInTerminal(Manager manager) {
+    std::string command =
+        manager == Manager::User ? "systemctl --user daemon-reload" : "systemctl daemon-reload";
+    return runVisibly(command);
 }
 
 std::string showUnitFile(const Unit& unit) {

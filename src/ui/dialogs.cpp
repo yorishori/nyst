@@ -43,7 +43,9 @@ std::vector<HelpSection> helpSections() {
          {{"s / S", "start / stop"},
           {"r", "restart"},
           {"R", "reload unit"},
-          {"e / E", "enable / disable"}}},
+          {"e / E", "enable / disable"},
+          {"m / M", "mask / unmask"},
+          {"D", "daemon-reload"}}},
         {"other", {{"u", "reload all data"}, {"?", "this help"}, {"q", "quit"}}},
     };
 }

@@ -7,13 +7,14 @@
 
 namespace nyst {
 
-enum class UnitAction { Start, Stop, Restart, Reload, Enable, Disable };
+enum class UnitAction { Start, Stop, Restart, Reload, Enable, Disable, Mask, Unmask };
 
 /// The systemctl verb, e.g. "restart".
 std::string toString(UnitAction action);
 
 /// Empty if the action can run on this unit, otherwise the reason it cannot.
-/// Only loaded units can be started or stopped; enable/disable also work on unit files.
+/// Only loaded units can be started or stopped; enable/disable/mask/unmask also work on
+/// unit files. Mask needs an unmasked unit and unmask a masked one.
 std::string whyActionUnavailable(const Unit& unit, UnitAction action);
 
 /// Runs `systemctl [--user] <verb> <name>` attached to the terminal, so polkit can ask
@@ -25,5 +26,8 @@ int runActionInTerminal(const Unit& unit, UnitAction action);
 /// pager and blocks until it exits. The caller must have released the terminal first.
 /// Returns an error message, or an empty string on success.
 std::string showUnitFile(const Unit& unit);
+
+/// Runs `systemctl [--user] daemon-reload` for the manager like runActionInTerminal does.
+int runDaemonReloadInTerminal(Manager manager);
 
 } // namespace nyst

@@ -59,7 +59,8 @@ Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 
 ## Actions
 
-`s`/`S` start/stop, `r` restart, `R` reload, `e`/`E` enable/disable the selected unit.
+`s`/`S` start/stop, `r` restart, `R` reload, `e`/`E` enable/disable, `m`/`M` mask/unmask the
+selected unit, and `D` runs `daemon-reload` for the selected unit's manager (system if none).
 
 1. A dialog asks first, e.g. `Restart sshd.service (system)?` (`y`, or click `[yes]`; `n`/`Esc`,
    or a click outside, cancels; `Enter` alone picks the focused button, which starts on `[no]`).
@@ -68,8 +69,9 @@ Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 3. It prints the result and waits for `Enter`, then reloads everything. The status bar shows
    `restart sshd.service: done` or `...: failed (exit N)`.
 
-Only loaded units can be started, stopped, restarted, or reloaded; enable/disable also work on
-units that are only known as unit files. Missing units offer no actions. `?` shows every key.
+Only loaded units can be started, stopped, restarted, or reloaded; enable/disable/mask/unmask
+also work on units that are only known as unit files. Mask is offered only for unmasked units
+and unmask only for masked ones. Missing units offer no actions. `?` shows every key.
 
 ## Search and filters
 
@@ -195,6 +197,8 @@ All keys:
 | `s` / `S` | start / stop (asks first) |
 | `r` / `R` | restart / reload (asks first) |
 | `e` / `E` | enable / disable (asks first) |
+| `m` / `M` | mask / unmask (asks first) |
+| `D` | daemon-reload (asks first) |
 | `u` | reload all data from systemd |
 | `?` | help overlay |
 | `q` | quit |
