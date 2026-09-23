@@ -2,6 +2,7 @@
 #pragma once
 
 #include "model/unit_graph.hpp"
+#include "ui/filters.hpp"
 
 #include <ftxui/dom/elements.hpp>
 
@@ -25,8 +26,10 @@ struct Row {
     EdgeKind edgeKind = EdgeKind::Wants; // relation to the parent row
     bool expandable = false;
     bool expanded = false;
-    bool isCycle = false; // unit already appears among this row's ancestors
-    int groupSize = 0;    // number of members, for group rows
+    bool isCycle = false;       // unit already appears among this row's ancestors
+    bool isContextOnly = false; // fails the filters; shown only because a descendant passes
+    int groupSize = 0;          // members that pass the filters, for group rows
+    int groupTotal = 0;         // all members, for group rows
 };
 
 /// A node before it becomes a Row: either a unit or a synthetic group.
@@ -42,6 +45,9 @@ class TreeView {
 public:
     /// Points the view at a (re)loaded graph. The graph must outlive the view or the next call.
     void setGraph(const UnitGraph* graph);
+
+    /// Applies new filters. Cheap to call every frame: does nothing if they are unchanged.
+    void setFilters(const FilterState& filters);
 
     const std::vector<Row>& rows() const;
     const Row* selectedRow() const;
@@ -84,8 +90,12 @@ private:
     void computeGroups();
     /// Re-flattens the tree. Keeps the cursor on preferredPath, or on the current row if empty.
     void rebuildRows(const std::string& preferredPath = "");
-    void appendNode(const TreeNode& node, int depth, const std::string& parentPath,
-                    std::set<std::string>& ancestors);
+    /// Appends the node and its visible descendants. Returns false (and appends nothing)
+    /// if neither the node nor anything below it passes the filters, unless alwaysShow.
+    bool appendNode(const TreeNode& node, int depth, const std::string& parentPath,
+                    std::set<std::string>& ancestors, bool alwaysShow);
+    bool nodePassesFilters(const TreeNode& node) const;
+    int countPassingMembers(const TreeNode& group) const;
     void restoreCursor(const std::string& path, const std::string& unitKey);
 
     std::set<std::string>& expandedPaths();
@@ -93,6 +103,7 @@ private:
 
     const UnitGraph* graph_ = nullptr;
     TreeDirection direction_ = TreeDirection::Forward;
+    FilterState filters_ = defaultFilters();
     std::set<std::string> forwardExpanded_;
     std::set<std::string> reverseExpanded_;
     std::vector<FocusEntry> focusStack_;

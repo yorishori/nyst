@@ -4,7 +4,7 @@ A terminal UI that shows every systemd unit on the machine (system and user mana
 navigable dependency tree, with running state, owner, origin (systemd / package / admin / user /
 generated / transient / unowned / missing), and the kind of each dependency.
 
-> Status: milestone 2 (tree view). Search/filters, details/journal, and actions are next.
+> Status: milestone 3 (tree view, search, filters). Details/journal and actions are next.
 
 ## Build
 
@@ -43,6 +43,20 @@ Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 | `◐` yellow | transitioning | | |
 | `?` | missing | | |
 | `⊘` | masked | | |
+
+## Search and filters
+
+- `/` searches name and description (case-insensitive). `Enter` keeps the search, `Esc` clears it.
+- `F` opens the filter panel: unit type, state, manager, origin, and "only locally modified" /
+  "only masked". `device`, `scope`, and `slice` are off by default because they are mostly noise.
+- `p` toggles the **problems** view: failed units, missing units, units whose file could not be
+  parsed, `unowned` units, and masked units that another unit requires. It ignores the checkboxes
+  so nothing broken can hide behind a type filter.
+
+A row is shown if it passes the filters or if something in its *expanded* subtree does; rows kept
+only for context are dimmed. In the forward tree the roots and groups always stay visible, and the
+group counts show how many members pass (e.g. `Not loaded (3 of 275)`). To search across **all**
+units at once, use the reverse direction (`d`), whose top level is a flat, filtered list.
 
 ## `--dump`
 
@@ -108,6 +122,9 @@ Working now:
 | `Space` | toggle expand |
 | `Enter` / `Backspace` | focus on unit / go back |
 | `d` | toggle tree direction |
+| `/` | search (`Enter` keeps, `Esc` clears, `↑/↓` move while typing) |
+| `F` | filter panel (arrows move, `Space`/`Enter` toggle, `Esc`/`F` close) |
+| `p` | problems preset |
 | `u` | reload all data from systemd |
 | `q` | quit |
 
@@ -115,9 +132,6 @@ Planned:
 
 | Key | Action |
 |---|---|
-| `/` | search (`Esc` clears) |
-| `F` | filter panel |
-| `p` | problems preset |
 | `J` / `L` | journal pane / full journal in pager |
 | `s` / `S` | start / stop |
 | `r` / `R` | restart / reload |

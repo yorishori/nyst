@@ -90,6 +90,14 @@ void TreeView::setGraph(const UnitGraph* graph) {
     rebuildRows();
 }
 
+void TreeView::setFilters(const FilterState& filters) {
+    if (filters == filters_) {
+        return;
+    }
+    filters_ = filters;
+    rebuildRows();
+}
+
 const std::vector<Row>& TreeView::rows() const {
     return rows_;
 }
@@ -343,14 +351,17 @@ void TreeView::rebuildRows(const std::string& preferredPath) {
 
     rows_.clear();
     std::set<std::string> ancestors;
+    // Roots, groups, and the focus root stay visible as landmarks; the reverse
+    // top level is a plain list of units, so it is filtered like everything else.
+    bool alwaysShowTopLevel = direction_ == TreeDirection::Forward || !focusedUnitKey().empty();
     for (const TreeNode& node : topLevelNodes()) {
-        appendNode(node, 0, "", ancestors);
+        appendNode(node, 0, "", ancestors, alwaysShowTopLevel);
     }
     restoreCursor(previousPath, previousUnitKey);
 }
 
-void TreeView::appendNode(const TreeNode& node, int depth, const std::string& parentPath,
-                          std::set<std::string>& ancestors) {
+bool TreeView::appendNode(const TreeNode& node, int depth, const std::string& parentPath,
+                          std::set<std::string>& ancestors, bool alwaysShow) {
     Row row;
     row.path = parentPath.empty() ? node.id : parentPath + "/" + node.id;
     row.depth = depth;
@@ -362,18 +373,47 @@ void TreeView::appendNode(const TreeNode& node, int depth, const std::string& pa
     row.expandable = !row.isCycle && hasChildren(node);
     row.expanded = row.expandable && expandedPaths().count(row.path) > 0;
     if (isGroup(node)) {
-        row.groupSize = static_cast<int>(childrenOf(node).size());
+        row.groupTotal = static_cast<int>(childrenOf(node).size());
+        row.groupSize = countPassingMembers(node);
     }
+    std::size_t rowIndex = rows_.size();
     rows_.push_back(row);
 
-    if (!row.expanded) {
-        return;
+    // Children that don't pass remove themselves, so anything left behind was kept.
+    if (row.expanded) {
+        ancestors.insert(node.unitKey);
+        for (const TreeNode& child : childrenOf(node)) {
+            appendNode(child, depth + 1, row.path, ancestors, false);
+        }
+        ancestors.erase(node.unitKey);
     }
-    ancestors.insert(node.unitKey);
-    for (const TreeNode& child : childrenOf(node)) {
-        appendNode(child, depth + 1, row.path, ancestors);
+    bool hasVisibleDescendant = rows_.size() > rowIndex + 1;
+
+    bool passes = nodePassesFilters(node);
+    if (!passes && !hasVisibleDescendant && !alwaysShow) {
+        rows_.resize(rowIndex);
+        return false;
     }
-    ancestors.erase(node.unitKey);
+    rows_[rowIndex].isContextOnly = !passes && !isGroup(node);
+    return true;
+}
+
+bool TreeView::nodePassesFilters(const TreeNode& node) const {
+    if (isGroup(node)) {
+        return false;
+    }
+    const Unit* unit = graph_->find(node.unitKey);
+    return unit != nullptr && unitPassesFilters(*unit, filters_, *graph_);
+}
+
+int TreeView::countPassingMembers(const TreeNode& group) const {
+    int passing = 0;
+    for (const TreeNode& member : childrenOf(group)) {
+        if (nodePassesFilters(member)) {
+            ++passing;
+        }
+    }
+    return passing;
 }
 
 // Prefer the exact same row, then the same unit anywhere (e.g. after a direction
@@ -491,8 +531,12 @@ std::string runsAsSuffix(const Unit& unit) {
 
 ftxui::Element renderGroupRow(const Row& row, ftxui::Elements left) {
     using namespace ftxui;
+    std::string count = std::to_string(row.groupSize);
+    if (row.groupSize != row.groupTotal) {
+        count += " of " + std::to_string(row.groupTotal);
+    }
     left.push_back(text(row.label) | bold);
-    left.push_back(text(" (" + std::to_string(row.groupSize) + ")") | dim);
+    left.push_back(text(" (" + count + ")") | dim);
     return hbox(left);
 }
 
@@ -544,12 +588,15 @@ ftxui::Element renderRow(const Row& row, const UnitGraph& graph, TreeDirection d
 ftxui::Element TreeView::render() const {
     using namespace ftxui;
     if (graph_ == nullptr || rows_.empty()) {
-        return text("no units") | dim | center | flex;
+        return text("no units match the filters") | dim | center | flex;
     }
 
     Elements lines;
     for (int index = 0; index < static_cast<int>(rows_.size()); ++index) {
         Element line = renderRow(rows_[index], *graph_, direction_);
+        if (rows_[index].isContextOnly) {
+            line = line | dim;
+        }
         if (index == cursor_) {
             line = line | inverted | focus;
         }

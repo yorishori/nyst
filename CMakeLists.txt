@@ -37,6 +37,7 @@ add_executable(nyst
     src/source/classifier.cpp
     src/source/loader.cpp
     src/ui/app.cpp
+    src/ui/filters.cpp
     src/ui/tree_view.cpp
 )
 
