@@ -132,6 +132,46 @@ void applyConditions(const PropertyMap& properties, const char* propertyName, Un
     }
 }
 
+/// One row of ExecStart, signature (sasbttttuii): path, argv, ignore failure, then
+/// timestamps, PID, and exit status of its last run (not needed here).
+using ExecRow =
+    sdbus::Struct<std::string, std::vector<std::string>, bool, std::uint64_t, std::uint64_t,
+                  std::uint64_t, std::uint64_t, std::uint32_t, std::int32_t, std::int32_t>;
+
+/// One row of Listen, signature (ss): kind ("Stream", "Datagram", ...) and address.
+using ListenRow = sdbus::Struct<std::string, std::string>;
+
+std::string quotedIfNeeded(const std::string& argument) {
+    return argument.find(' ') == std::string::npos ? argument : "\"" + argument + "\"";
+}
+
+/// argv joined like a shell line; "-" in front if failures are ignored, as in unit files.
+std::string commandLine(const ExecRow& row) {
+    const std::vector<std::string>& argv = std::get<1>(row);
+    std::string line = std::get<2>(row) ? "-" : "";
+    if (argv.empty()) {
+        return line + std::get<0>(row);
+    }
+    for (std::size_t index = 0; index < argv.size(); ++index) {
+        line += (index == 0 ? "" : " ") + quotedIfNeeded(argv[index]);
+    }
+    return line;
+}
+
+void applyWhatItRuns(const PropertyMap& properties, Unit& unit) {
+    for (const ExecRow& row : typedProperty<std::vector<ExecRow>>(properties, "ExecStart", {})) {
+        unit.commands.push_back(commandLine(row));
+    }
+    // systemd reports WorkingDirectory=-/path (don't fail if missing) as "!/path".
+    unit.workingDirectory = stringProperty(properties, "WorkingDirectory");
+    if (!unit.workingDirectory.empty() && unit.workingDirectory[0] == '!') {
+        unit.workingDirectory = unit.workingDirectory.substr(1) + " (ok if missing)";
+    }
+    for (const ListenRow& row : typedProperty<std::vector<ListenRow>>(properties, "Listen", {})) {
+        unit.listenAddresses.push_back(std::get<0>(row) + " " + std::get<1>(row));
+    }
+}
+
 void applyRuntimeProperties(const PropertyMap& properties, Unit& unit) {
     unit.result = stringProperty(properties, "Result");
     unit.mainExitKind = typedProperty<std::int32_t>(properties, "ExecMainCode", 0);
@@ -184,6 +224,7 @@ void applyAllProperties(const PropertyMap& properties, Unit& unit) {
     applyUnitProperties(properties, unit);
     applyAliases(properties, unit);
     applyRuntimeProperties(properties, unit);
+    applyWhatItRuns(properties, unit);
     if (unit.manager == Manager::System && unit.type == "service") {
         unit.runAsUser = stringProperty(properties, "User");
     }

@@ -241,6 +241,39 @@ ftxui::Elements skippedFields(const Unit& unit) {
     return fields;
 }
 
+std::vector<std::string> triggerNames(const UnitGraph& graph, const std::vector<Edge>& edges) {
+    std::vector<std::string> names;
+    for (const Edge& edge : edges) {
+        const Unit* other = graph.find(edge.target);
+        if (edge.kind == EdgeKind::Triggers && other != nullptr) {
+            names.push_back(other->name);
+        }
+    }
+    return names;
+}
+
+void appendList(ftxui::Elements& fields, const std::string& label,
+                const std::vector<std::string>& values) {
+    for (std::size_t index = 0; index < values.size(); ++index) {
+        fields.push_back(field(index == 0 ? label : "", values[index]));
+    }
+}
+
+/// The command a service runs, what a socket listens on, and what triggers what.
+ftxui::Elements whatItRunsFields(const Unit& unit, const UnitGraph& graph) {
+    ftxui::Elements fields;
+    appendList(fields, "command", unit.commands);
+    if (!unit.workingDirectory.empty()) {
+        fields.push_back(field("workdir", unit.workingDirectory));
+    }
+    appendList(fields, "listens", unit.listenAddresses);
+    // A unit's Triggers= edges point at what it activates (timer -> service); the reverse
+    // edges name whoever activates it.
+    appendList(fields, "triggers", triggerNames(graph, graph.dependenciesOf(unit.key)));
+    appendList(fields, "trig. by", triggerNames(graph, graph.dependentsOf(unit.key)));
+    return fields;
+}
+
 /// When the unit last started, how long that took, and how long it has been in its state.
 ftxui::Elements timingFields(const Unit& unit, const UnitGraph& graph) {
     ftxui::Elements fields;
@@ -317,6 +350,11 @@ ftxui::Element renderDetails(const Unit* unit, const UnitGraph& graph) {
     lines.push_back(separatorEmpty());
     appendAll(lines, stateFields(*unit));
     appendAll(lines, runtimeFields(*unit));
+    Elements whatItRuns = whatItRunsFields(*unit, graph);
+    if (!whatItRuns.empty()) {
+        lines.push_back(separatorEmpty());
+        appendAll(lines, whatItRuns);
+    }
     Elements timing = timingFields(*unit, graph);
     if (!timing.empty()) {
         lines.push_back(separatorEmpty());

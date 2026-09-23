@@ -89,6 +89,8 @@ Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
   manager and user, aliases, load/active/file state, runtime facts (result, exit status, PID,
   memory, restarts, timer runs), origin and package, fragment/source/drop-in paths, edge counts,
   and any error hit while reading it.
+- A **what it runs** section shows a service's `ExecStart=` command lines and working
+  directory, what a socket listens on, and which units a unit triggers or is triggered by.
 - Its **timing** section shows when the unit last started (`+offset since kernel start (wall
   clock)`, marked `after boot` if later than boot), how long that took and the start timeout
   systemd allows (so you can tell a timeout from a program giving up), how long it has been

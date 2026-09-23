@@ -69,6 +69,11 @@ struct Unit {
     std::vector<Edge> dependencies;   // forward edges
     std::string error;                // non-empty if reading this unit partially failed
 
+    // What the unit runs or provides (configuration; changes only with daemon-reload).
+    std::vector<std::string> commands;        // ExecStart= lines, e.g. "/usr/bin/sshd -D"
+    std::string workingDirectory;             // WorkingDirectory=, empty if not set
+    std::vector<std::string> listenAddresses; // sockets: "Stream 0.0.0.0:22"
+
     // Runtime details. Zero or empty when unknown or not applicable to the unit type.
     std::string result;                  // success, exit-code, timeout, oom-kill, ...
     int mainExitKind = 0;                // ExecMainCode: 1 exited, 2 killed, 3 dumped core
