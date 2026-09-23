@@ -2,6 +2,7 @@
 #include "ui/tree_view.hpp"
 
 #include <algorithm>
+#include <deque>
 
 namespace nyst {
 
@@ -78,6 +79,7 @@ std::string toString(TreeDirection direction) {
 void TreeView::setGraph(const UnitGraph* graph) {
     graph_ = graph;
     computeGroups();
+    refreshSearchExpansion();
 
     // Open the two manager roots on first load so the tree is useful right away.
     if (!hasExpandedInitialRoots_ && graph_ != nullptr) {
@@ -95,8 +97,13 @@ void TreeView::setFilters(const FilterState& filters) {
     if (filters == filters_) {
         return;
     }
+    bool searchChanged = filters.search != filters_.search;
     filters_ = filters;
+    refreshSearchExpansion();
     rebuildRows();
+    if (searchChanged && !filters_.search.empty()) {
+        moveCursorToFirstMatch();
+    }
 }
 
 const std::vector<Row>& TreeView::rows() const {
@@ -152,7 +159,7 @@ void TreeView::collapseSelected() {
         return;
     }
     if (row->expanded) {
-        expandedPaths().erase(row->path);
+        collapsePath(row->path);
         rebuildRows();
         return;
     }
@@ -172,7 +179,7 @@ void TreeView::toggleSelected() {
         return;
     }
     if (row->expanded) {
-        expandedPaths().erase(row->path);
+        collapsePath(row->path);
     } else {
         expandedPaths().insert(row->path);
     }
@@ -186,6 +193,7 @@ void TreeView::toggleDirection() {
     if (!focused.empty()) {
         expandedPaths().insert(focused);
     }
+    refreshSearchExpansion();
     rebuildRows();
 }
 
@@ -198,7 +206,9 @@ void TreeView::focusSelected() {
     // The focus root's path is just its key, in either direction.
     forwardExpanded_.insert(row->unitKey);
     reverseExpanded_.insert(row->unitKey);
-    rebuildRows(row->unitKey);
+    std::string newRootPath = row->unitKey;
+    refreshSearchExpansion();
+    rebuildRows(newRootPath);
 }
 
 void TreeView::goBack() {
@@ -207,6 +217,7 @@ void TreeView::goBack() {
     }
     std::string returnPath = focusStack_.back().returnPath;
     focusStack_.pop_back();
+    refreshSearchExpansion();
     rebuildRows(returnPath);
 }
 
@@ -372,7 +383,7 @@ bool TreeView::appendNode(const TreeNode& node, int depth, const std::string& pa
     row.edgeKind = node.edgeKind;
     row.isCycle = !isGroup(node) && ancestors.count(node.unitKey) > 0;
     row.expandable = !row.isCycle && hasChildren(node);
-    row.expanded = row.expandable && expandedPaths().count(row.path) > 0;
+    row.expanded = row.expandable && isExpanded(row.path);
     if (isGroup(node)) {
         row.groupTotal = static_cast<int>(childrenOf(node).size());
         row.groupSize = countPassingMembers(node);
@@ -433,6 +444,87 @@ void TreeView::restoreCursor(const std::string& path, const std::string& unitKey
         }
     }
     moveCursor(0);
+}
+
+// Roots are walked before the groups, so a unit that a default.target reaches is always
+// revealed there rather than through some unreachable unit that happens to be closer.
+std::map<std::string, std::string> TreeView::firstPathToEachUnit() const {
+    std::vector<std::pair<std::string, std::string>> rootSeeds;
+    std::vector<std::pair<std::string, std::string>> groupSeeds;
+    for (const TreeNode& top : topLevelNodes()) {
+        if (!isGroup(top)) {
+            rootSeeds.push_back({top.unitKey, top.id});
+            continue;
+        }
+        for (const TreeNode& member : childrenOf(top)) {
+            groupSeeds.push_back({member.unitKey, top.id + "/" + member.id});
+        }
+    }
+
+    std::map<std::string, std::string> pathOf;
+    walkBreadthFirst(rootSeeds, pathOf);
+    walkBreadthFirst(groupSeeds, pathOf);
+    return pathOf;
+}
+
+void TreeView::walkBreadthFirst(const std::vector<std::pair<std::string, std::string>>& seeds,
+                                std::map<std::string, std::string>& pathOf) const {
+    std::deque<std::string> pending;
+    for (const auto& [key, path] : seeds) {
+        if (pathOf.count(key) == 0) {
+            pathOf[key] = path;
+            pending.push_back(key);
+        }
+    }
+    while (!pending.empty()) {
+        std::string key = pending.front();
+        pending.pop_front();
+        for (const TreeNode& child : unitChildren(key)) {
+            if (pathOf.count(child.unitKey) == 0) {
+                pathOf[child.unitKey] = pathOf[key] + "/" + child.id;
+                pending.push_back(child.unitKey);
+            }
+        }
+    }
+}
+
+// Only the forward tree needs this: the reverse top level already lists every match.
+void TreeView::refreshSearchExpansion() {
+    searchExpanded_.clear();
+    if (graph_ == nullptr || filters_.search.empty() || direction_ != TreeDirection::Forward) {
+        return;
+    }
+    for (const auto& [key, path] : firstPathToEachUnit()) {
+        const Unit* unit = graph_->find(key);
+        if (unit == nullptr || !unitPassesFilters(*unit, filters_, *graph_)) {
+            continue;
+        }
+        // Open every ancestor of the match, not the match itself.
+        for (std::size_t slash = path.find('/'); slash != std::string::npos;
+             slash = path.find('/', slash + 1)) {
+            searchExpanded_.insert(path.substr(0, slash));
+        }
+    }
+}
+
+bool TreeView::isExpanded(const std::string& path) const {
+    bool openedBySearch = direction_ == TreeDirection::Forward && searchExpanded_.count(path) > 0;
+    return openedBySearch || expandedPaths().count(path) > 0;
+}
+
+void TreeView::collapsePath(const std::string& path) {
+    expandedPaths().erase(path);
+    searchExpanded_.erase(path);
+}
+
+void TreeView::moveCursorToFirstMatch() {
+    for (int index = 0; index < static_cast<int>(rows_.size()); ++index) {
+        const Row& row = rows_[index];
+        if (!row.unitKey.empty() && !row.isContextOnly) {
+            cursor_ = index;
+            return;
+        }
+    }
 }
 
 std::set<std::string>& TreeView::expandedPaths() {

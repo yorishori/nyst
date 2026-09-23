@@ -82,8 +82,13 @@ units that are only known as unit files. Missing units offer no actions. `?` sho
 
 A row is shown if it passes the filters or if something in its *expanded* subtree does; rows kept
 only for context are dimmed. In the forward tree the roots and groups always stay visible, and the
-group counts show how many members pass (e.g. `Not loaded (3 of 275)`). To search across **all**
-units at once, use the reverse direction (`d`), whose top level is a flat, filtered list.
+group counts show how many members pass (e.g. `Not loaded (3 of 275)`).
+
+Searching in the forward tree **expands the way to every match**, using the shortest route from
+`System`/`User` (or through the groups for units those don't reach), and puts the cursor on the
+first match. A unit that appears in several places is revealed once; the reverse direction (`d`)
+lists every match flat. You can still collapse revealed branches, and clearing the search puts
+the tree back the way you had it.
 
 ## Mouse
 

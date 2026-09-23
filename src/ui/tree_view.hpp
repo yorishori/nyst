@@ -8,6 +8,7 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/box.hpp>
 
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -49,6 +50,8 @@ public:
     void setGraph(const UnitGraph* graph);
 
     /// Applies new filters. Cheap to call every frame: does nothing if they are unchanged.
+    /// A new search in the forward tree expands the way to every match and moves the
+    /// cursor to the first one.
     void setFilters(const FilterState& filters);
 
     const std::vector<Row>& rows() const;
@@ -94,6 +97,15 @@ private:
     bool hasChildren(const TreeNode& node) const;
 
     void computeGroups();
+    std::map<std::string, std::string> firstPathToEachUnit() const;
+    /// Breadth-first walk from the seeds (unit key, path), recording the first path found
+    /// to every unit not already in pathOf.
+    void walkBreadthFirst(const std::vector<std::pair<std::string, std::string>>& seeds,
+                          std::map<std::string, std::string>& pathOf) const;
+    void refreshSearchExpansion();
+    bool isExpanded(const std::string& path) const;
+    void collapsePath(const std::string& path);
+    void moveCursorToFirstMatch();
     /// Re-flattens the tree. Keeps the cursor on preferredPath, or on the current row if empty.
     void rebuildRows(const std::string& preferredPath = "");
     /// Appends the node and its visible descendants. Returns false (and appends nothing)
@@ -112,6 +124,9 @@ private:
     FilterState filters_ = defaultFilters();
     std::set<std::string> forwardExpanded_;
     std::set<std::string> reverseExpanded_;
+    // Opened automatically to reveal search matches; kept apart from the user's own
+    // expansion so clearing the search restores the tree as it was.
+    std::set<std::string> searchExpanded_;
     std::vector<FocusEntry> focusStack_;
     std::vector<std::string> unreachableKeys_;
     std::vector<std::string> notLoadedKeys_;

@@ -148,6 +148,11 @@ Application::Application() {
     searchOptions.content = &filters_.search;
     searchOptions.placeholder = "name or description";
     searchOptions.multiline = false;
+    // ftxui inverts a focused input, which turns the tinted box into a solid block;
+    // the coloured border already shows that the search box is active.
+    searchOptions.transform = [](ftxui::InputState state) {
+        return state.is_placeholder ? state.element | ftxui::dim : state.element;
+    };
     searchInput_ = ftxui::Input(searchOptions);
     filterPanel_ = makeFilterPanel(filters_, [this] { setMode(InputMode::Tree); });
 }
