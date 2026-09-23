@@ -57,7 +57,11 @@ int runDump() {
     for (const auto& [key, unit] : graph.allUnits()) {
         printDumpLine(graph, unit);
     }
-    std::cout << "# " << nyst::summarizeUnits(graph) << " · " << sourceStatus << '\n';
+    std::cout << "# " << nyst::summarizeUnits(graph);
+    if (!sourceStatus.empty()) {
+        std::cout << " · " << sourceStatus;
+    }
+    std::cout << '\n';
     return 0;
 }
 

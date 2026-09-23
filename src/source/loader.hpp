@@ -8,8 +8,8 @@
 namespace nyst {
 
 /// Loads both managers into a finished graph. Never throws; problems end up in
-/// sourceStatus (e.g. "system bus ok · user units unavailable (...)", plus a count of boot
-/// jobs dropped by ordering cycles) or in the affected Unit::error.
+/// sourceStatus (e.g. "user units unavailable (...) · ⚠ 12 jobs dropped at boot"; empty when
+/// all is well) or in the affected Unit::error.
 UnitGraph loadEverything(std::string& sourceStatus);
 
 /// "949 units · 1 failed", computed from the graph as it is now.

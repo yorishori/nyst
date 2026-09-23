@@ -43,7 +43,8 @@ ClassifierContext makeClassifierContext() {
     return context;
 }
 
-/// Reads one manager into the graph and returns a short status fragment for it.
+/// Reads one manager into the graph. Returns a short note if its bus was unavailable,
+/// or an empty string when all went well.
 std::string loadManager(Manager manager, const PackageDb& packages,
                         const ClassifierContext& context, UnitGraph& graph) {
     auto start = Clock::now();
@@ -68,7 +69,13 @@ std::string loadManager(Manager manager, const PackageDb& packages,
         std::string label = manager == Manager::System ? "system" : "user";
         return label + " units unavailable (" + connectionError + ")";
     }
-    return toString(manager) + " bus ok";
+    return "";
+}
+
+void appendNote(std::string& notes, const std::string& note) {
+    if (!note.empty()) {
+        notes += notes.empty() ? note : " · " + note;
+    }
 }
 
 std::size_t countUnitsDroppedByCycles(const UnitGraph& graph) {
@@ -115,10 +122,12 @@ UnitGraph loadEverything(std::string& sourceStatus) {
     graph.rebuildReverseEdges();
     graph.rebuildDiagnostics();
 
-    sourceStatus = systemStatus + " · " + userStatus;
+    sourceStatus.clear();
+    appendNote(sourceStatus, systemStatus);
+    appendNote(sourceStatus, userStatus);
     std::size_t dropped = countUnitsDroppedByCycles(graph);
     if (dropped > 0) {
-        sourceStatus += " · ⚠ " + std::to_string(dropped) + " boot jobs dropped by ordering cycles";
+        appendNote(sourceStatus, "⚠ " + std::to_string(dropped) + " jobs dropped at boot");
     }
     debugLog("loadEverything finished in " + millisecondsSince(start) + ": " +
              summarizeUnits(graph) + " · " + sourceStatus);

@@ -41,6 +41,14 @@ changed. A finished `daemon-reload`, or a unit that starts running but was not l
 triggers a full background reload instead. Units that are merely loaded for a moment (e.g. by
 `systemctl status`) are ignored.
 
+## Status bar
+
+The left side shows the unit counts, anything unusual about loading (a bus that could not be
+reached, jobs dropped at boot), and the outcome of the last action. The right side shows only
+the few keys that make sense for the selected row: e.g. `r restart · L full log · c unit file`
+for a failed service, `e enable · m mask · c unit file` for a unit file that is not loaded.
+`?` lists every key.
+
 ## Tabs
 
 The header has five tabs (`1`–`5`, `Tab`/`Shift+Tab`, or click). Search and filters apply to all

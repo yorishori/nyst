@@ -104,6 +104,7 @@ private:
     ftxui::Element renderStatusBar() const;
     ftxui::Element addOverlay(ftxui::Element main);
     std::vector<std::string> keyHints() const;
+    std::vector<std::string> hintsForSelection() const;
 
     UnitGraph graph_;
     std::string sourceStatus_;
@@ -790,27 +791,38 @@ ftxui::Element Application::renderTreeTitle() const {
     return hbox(title);
 }
 
-// A flexbox so that, on a narrow terminal, whole hints wrap onto extra lines
-// instead of the end of the bar being cut off.
+// Status on the left, a few hints that fit the current selection on the right; both are
+// flexboxes, so on a narrow terminal whole items wrap instead of text being cut off.
+// The full key list lives in the ? overlay.
 ftxui::Element Application::renderStatusBar() const {
     using namespace ftxui;
-    Elements items;
+    Elements status;
     if (loading_) {
-        items.push_back(text("loading units...") | color(Color::Cyan) | bold);
+        status.push_back(text("loading units...") | color(Color::Cyan) | bold);
+    }
+    if (!graph_.allUnits().empty()) {
+        status.push_back(text(summarizeUnits(graph_)));
     }
     if (!sourceStatus_.empty()) {
-        items.push_back(text(summarizeUnits(graph_) + " · " + sourceStatus_));
+        status.push_back(text(sourceStatus_));
     }
     if (!noticeMessage_.empty()) {
         Color noticeColor = noticeIsError_ ? Color::Red : Color::Green;
-        items.push_back(text(noticeMessage_) | color(noticeColor) | bold);
+        status.push_back(text(noticeMessage_) | color(noticeColor) | bold);
     }
+    FlexboxConfig statusLayout;
+    statusLayout.SetGap(3, 0);
+
+    Elements hints;
     for (const std::string& hint : keyHints()) {
-        items.push_back(text(hint) | dim);
+        hints.push_back(text(hint) | dim);
     }
-    FlexboxConfig layout;
-    layout.SetGap(3, 0);
-    return flexbox(items, layout) | xflex;
+    FlexboxConfig hintLayout;
+    hintLayout.SetGap(2, 0);
+    hintLayout.Set(FlexboxConfig::JustifyContent::FlexEnd);
+
+    return hbox({text(" "), flexbox(status, statusLayout) | flex, text("  "),
+                 flexbox(hints, hintLayout) | xflex_shrink, text(" ")});
 }
 
 std::vector<std::string> Application::keyHints() const {
@@ -826,11 +838,47 @@ std::vector<std::string> Application::keyHints() const {
     case InputMode::Tree:
         break;
     }
-    return {"/ search",        "F filters",       "p problems",         "d direction",
-            "b sort order",    "Enter focus",     "J journal",          "L full log",
-            "c unit file",     "s/S start/stop",  "r/R restart/reload", "e/E enable/disable",
-            "m/M mask/unmask", "D daemon-reload", "u reload",           "? help",
-            "q quit"};
+    std::vector<std::string> hints = hintsForSelection();
+    if (!tree_.focusedUnitKey().empty()) {
+        hints.push_back("Backspace back");
+    }
+    hints.push_back("? all keys");
+    return hints;
+}
+
+// The two or three things one would most likely do next with the selected row.
+std::vector<std::string> Application::hintsForSelection() const {
+    const Row* row = tree_.selectedRow();
+    const Unit* unit = selectedUnit();
+    if (row == nullptr) {
+        return {"/ search"};
+    }
+    if (unit == nullptr) {
+        return {row->expanded ? "← collapse" : "→ expand"};
+    }
+    if (unit->origin == Origin::Missing || unit->loadState == "not-found") {
+        return {"Enter focus", "p problems"};
+    }
+    if (isMasked(*unit) || unit->unitFileState.rfind("masked", 0) == 0) {
+        return {"M unmask", "c unit file"};
+    }
+    if (!unit->isLoaded) {
+        return {"e enable", "m mask", "c unit file"};
+    }
+    switch (unit->activeState) {
+    case ActiveState::Failed:
+        return {"r restart", "L full log", "c unit file"};
+    case ActiveState::Active:
+    case ActiveState::Reloading:
+        return {"r restart", "S stop", "L full log"};
+    case ActiveState::Activating:
+    case ActiveState::Deactivating:
+        return {"L full log", "S stop"};
+    case ActiveState::Inactive:
+    case ActiveState::Unknown:
+        break;
+    }
+    return {"s start", "L full log", "c unit file"};
 }
 
 } // namespace
