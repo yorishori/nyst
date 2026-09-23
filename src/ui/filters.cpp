@@ -130,7 +130,6 @@ ftxui::Component makeFlagGroup(FilterState& filters) {
     ftxui::Component column = ftxui::Container::Vertical({
         ftxui::Checkbox("only locally modified", &filters.onlyLocallyModified),
         ftxui::Checkbox("only masked", &filters.onlyMasked),
-        ftxui::Checkbox("problems only (p)", &filters.problemsOnly),
     });
     return ftxui::Renderer(
         column, [column] { return ftxui::window(ftxui::text(" flags "), column->Render()); });

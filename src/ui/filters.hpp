@@ -20,7 +20,8 @@ struct FilterState {
     std::map<std::string, bool> origins;      // keyed by toString(Origin)
     bool onlyLocallyModified = false;
     bool onlyMasked = false;
-    /// Shows only units that look broken; replaces the checkbox groups while on.
+    /// Shows only units that look broken, ignoring the checkbox groups. Set by the
+    /// Problems tab, not by the user directly.
     bool problemsOnly = false;
     std::string search; // case-insensitive substring of name or description
 

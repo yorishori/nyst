@@ -117,6 +117,26 @@ std::string parentPathOf(const std::string& path) {
 
 } // namespace
 
+std::string toString(View view) {
+    switch (view) {
+    case View::Tree:
+        return "Tree";
+    case View::Dependents:
+        return "Dependents";
+    case View::Boot:
+        return "Boot";
+    case View::Slowest:
+        return "Slowest";
+    case View::Problems:
+        return "Problems";
+    }
+    return "Unknown";
+}
+
+std::vector<View> allViews() {
+    return {View::Tree, View::Dependents, View::Boot, View::Slowest, View::Problems};
+}
+
 std::string toString(ListOrder order) {
     switch (order) {
     case ListOrder::FailedFirst:
@@ -157,11 +177,13 @@ void TreeView::setGraph(const UnitGraph* graph) {
 }
 
 void TreeView::setFilters(const FilterState& filters) {
-    if (filters == filters_) {
+    FilterState effective = filters;
+    effective.problemsOnly = view_ == View::Problems;
+    if (effective == filters_) {
         return;
     }
-    bool searchChanged = filters.search != filters_.search;
-    filters_ = filters;
+    bool searchChanged = effective.search != filters_.search;
+    filters_ = effective;
     refreshSearchExpansion();
     rebuildRows();
     if (searchChanged && !filters_.search.empty()) {
@@ -181,7 +203,7 @@ const Row* TreeView::selectedRow() const {
 }
 
 TreeDirection TreeView::direction() const {
-    return direction_;
+    return view_ == View::Tree ? TreeDirection::Forward : TreeDirection::Reverse;
 }
 
 std::string TreeView::focusedUnitKey() const {
@@ -249,43 +271,41 @@ void TreeView::toggleSelected() {
     rebuildRows();
 }
 
-void TreeView::toggleDirection() {
-    direction_ =
-        direction_ == TreeDirection::Forward ? TreeDirection::Reverse : TreeDirection::Forward;
-    if (direction_ == TreeDirection::Forward) {
-        listOrder_ = ListOrder::FailedFirst;
-    }
+void TreeView::setView(View view) {
+    const Row* before = selectedRow();
+    std::string unitBefore = before == nullptr ? "" : before->unitKey;
+    view_ = view;
+    filters_.problemsOnly = view_ == View::Problems;
     std::string focused = focusedUnitKey();
     if (!focused.empty()) {
         expandedPaths().insert(focused);
     }
     refreshSearchExpansion();
     rebuildRows();
+    // The unit may not be in this tab's list; then start at the top instead of wherever
+    // the old row index happens to land.
+    const Row* after = selectedRow();
+    if (after == nullptr || after->unitKey != unitBefore) {
+        moveCursorToStart();
+    }
 }
 
-void TreeView::cycleListOrder() {
-    switch (listOrder()) {
-    case ListOrder::FailedFirst:
-        listOrder_ = ListOrder::SlowestStartup;
-        break;
-    case ListOrder::SlowestStartup:
-        listOrder_ = ListOrder::BootOrder;
-        break;
-    case ListOrder::BootOrder:
-        listOrder_ = ListOrder::FailedFirst;
-        break;
-    }
-    if (listOrder_ != ListOrder::FailedFirst && direction_ == TreeDirection::Forward) {
-        ListOrder wanted = listOrder_;
-        toggleDirection();
-        listOrder_ = wanted;
-    }
-    rebuildRows();
-    moveCursorToStart();
+View TreeView::view() const {
+    return view_;
 }
 
 ListOrder TreeView::listOrder() const {
-    return direction_ == TreeDirection::Reverse ? listOrder_ : ListOrder::FailedFirst;
+    switch (view_) {
+    case View::Boot:
+        return ListOrder::BootOrder;
+    case View::Slowest:
+        return ListOrder::SlowestStartup;
+    case View::Tree:
+    case View::Dependents:
+    case View::Problems:
+        break;
+    }
+    return ListOrder::FailedFirst;
 }
 
 void TreeView::focusSelected() {
@@ -320,7 +340,7 @@ std::vector<TreeNode> TreeView::topLevelNodes() const {
     if (!focused.empty()) {
         return {makeUnitNode(focused, "")};
     }
-    if (direction_ == TreeDirection::Forward) {
+    if (direction() == TreeDirection::Forward) {
         return defaultForwardRoots();
     }
     return reverseTopLevel();
@@ -347,15 +367,15 @@ std::vector<TreeNode> TreeView::defaultForwardRoots() const {
 
 std::vector<TreeNode> TreeView::reverseTopLevel() const {
     std::vector<const Unit*> units;
-    if (listOrder_ == ListOrder::BootOrder) {
+    if (listOrder() == ListOrder::BootOrder) {
         units = unitsInBootOrder(*graph_);
     } else {
         for (const auto& [key, unit] : graph_->allUnits()) {
             units.push_back(&unit);
         }
         std::sort(units.begin(), units.end(),
-                  listOrder_ == ListOrder::SlowestStartup ? slowestStartupFirst
-                                                          : failedFirstThenByName);
+                  listOrder() == ListOrder::SlowestStartup ? slowestStartupFirst
+                                                           : failedFirstThenByName);
     }
 
     std::vector<TreeNode> nodes;
@@ -379,8 +399,9 @@ std::vector<TreeNode> TreeView::childrenOf(const TreeNode& node) const {
 }
 
 std::vector<TreeNode> TreeView::unitChildren(const std::string& unitKey) const {
-    std::vector<Edge> edges = direction_ == TreeDirection::Forward ? graph_->dependenciesOf(unitKey)
-                                                                   : graph_->dependentsOf(unitKey);
+    std::vector<Edge> edges = direction() == TreeDirection::Forward
+                                  ? graph_->dependenciesOf(unitKey)
+                                  : graph_->dependentsOf(unitKey);
     std::vector<TreeNode> candidates;
     for (const Edge& edge : edges) {
         TreeNode child = makeUnitNode(canonicalKey(*graph_, edge.target), "");
@@ -405,7 +426,7 @@ bool TreeView::hasChildren(const TreeNode& node) const {
     if (isGroup(node)) {
         return node.id == kUnreachableGroupId ? !unreachableKeys_.empty() : !notLoadedKeys_.empty();
     }
-    if (direction_ == TreeDirection::Forward) {
+    if (direction() == TreeDirection::Forward) {
         return !graph_->dependenciesOf(node.unitKey).empty();
     }
     return !graph_->dependentsOf(node.unitKey).empty();
@@ -462,7 +483,7 @@ void TreeView::rebuildRows(const std::string& preferredPath) {
     std::set<std::string> ancestors;
     // Roots, groups, and the focus root stay visible as landmarks; the reverse
     // top level is a plain list of units, so it is filtered like everything else.
-    bool alwaysShowTopLevel = direction_ == TreeDirection::Forward || !focusedUnitKey().empty();
+    bool alwaysShowTopLevel = direction() == TreeDirection::Forward || !focusedUnitKey().empty();
     for (const TreeNode& node : topLevelNodes()) {
         appendNode(node, 0, "", ancestors, alwaysShowTopLevel);
     }
@@ -588,7 +609,7 @@ void TreeView::walkBreadthFirst(const std::vector<std::pair<std::string, std::st
 // Only the forward tree needs this: the reverse top level already lists every match.
 void TreeView::refreshSearchExpansion() {
     searchExpanded_.clear();
-    if (graph_ == nullptr || filters_.search.empty() || direction_ != TreeDirection::Forward) {
+    if (graph_ == nullptr || filters_.search.empty() || direction() != TreeDirection::Forward) {
         return;
     }
     for (const auto& [key, path] : firstPathToEachUnit()) {
@@ -605,7 +626,7 @@ void TreeView::refreshSearchExpansion() {
 }
 
 bool TreeView::isExpanded(const std::string& path) const {
-    bool openedBySearch = direction_ == TreeDirection::Forward && searchExpanded_.count(path) > 0;
+    bool openedBySearch = direction() == TreeDirection::Forward && searchExpanded_.count(path) > 0;
     return openedBySearch || expandedPaths().count(path) > 0;
 }
 
@@ -625,11 +646,11 @@ void TreeView::moveCursorToFirstMatch() {
 }
 
 std::set<std::string>& TreeView::expandedPaths() {
-    return direction_ == TreeDirection::Forward ? forwardExpanded_ : reverseExpanded_;
+    return direction() == TreeDirection::Forward ? forwardExpanded_ : reverseExpanded_;
 }
 
 const std::set<std::string>& TreeView::expandedPaths() const {
-    return direction_ == TreeDirection::Forward ? forwardExpanded_ : reverseExpanded_;
+    return direction() == TreeDirection::Forward ? forwardExpanded_ : reverseExpanded_;
 }
 
 namespace {
@@ -815,7 +836,7 @@ ftxui::Element TreeView::render() const {
     Elements lines;
     for (int index = 0; index < static_cast<int>(rows_.size()); ++index) {
         Element line =
-            renderRow(rows_[index], *graph_, direction_, listOrder()) | reflect(rowBoxes_[index]);
+            renderRow(rows_[index], *graph_, direction(), listOrder()) | reflect(rowBoxes_[index]);
         if (rows_[index].isContextOnly) {
             line = line | dim;
         }

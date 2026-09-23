@@ -19,6 +19,21 @@ enum class TreeDirection { Forward, Reverse };
 
 std::string toString(TreeDirection direction);
 
+/// The tabs: each is a direction plus, for the flat lists, an order and filter.
+enum class View {
+    Tree,       // forward tree from the default targets: what pulls in what
+    Dependents, // flat list, failed first; children are who needs the unit
+    Boot,       // flat list in boot order
+    Slowest,    // flat list by startup time, like systemd-analyze blame
+    Problems    // flat list of problem units only
+};
+
+/// Display name, e.g. "Dependents".
+std::string toString(View view);
+
+/// All views in tab order.
+std::vector<View> allViews();
+
 /// How the flat list of the reverse direction is ordered.
 enum class ListOrder {
     FailedFirst,    // failed units first, then by name
@@ -65,6 +80,7 @@ public:
 
     const std::vector<Row>& rows() const;
     const Row* selectedRow() const;
+    View view() const;
     TreeDirection direction() const;
 
     /// Unit key of the current focus root, or empty when showing the default roots.
@@ -80,12 +96,9 @@ public:
     void collapseSelected();
     void toggleSelected();
 
-    void toggleDirection();
-
-    /// Cycles the reverse list's order: failed first -> slowest startup -> boot order.
-    /// Leaving "failed first" also switches to the reverse direction.
-    void cycleListOrder();
-    /// The order in effect: always FailedFirst in the forward direction.
+    /// Switches tabs. The cursor stays on the same unit where it can, and a focused unit
+    /// stays focused.
+    void setView(View view);
     ListOrder listOrder() const;
     /// Re-roots the tree on the selected unit (Enter).
     void focusSelected();
@@ -135,8 +148,8 @@ private:
     const std::set<std::string>& expandedPaths() const;
 
     const UnitGraph* graph_ = nullptr;
-    TreeDirection direction_ = TreeDirection::Forward;
-    ListOrder listOrder_ = ListOrder::FailedFirst; // only used in the reverse direction
+    View view_ = View::Tree;
+    // The filters in effect: as given to setFilters(), with problemsOnly set by the view.
     FilterState filters_ = defaultFilters();
     std::set<std::string> forwardExpanded_;
     std::set<std::string> reverseExpanded_;

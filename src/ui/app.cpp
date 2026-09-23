@@ -90,6 +90,11 @@ private:
     const Unit* selectedUnit() const;
     bool handleMouseEvent(ftxui::Event event);
     bool handleHeaderClick(const ftxui::Mouse& mouse);
+    bool handleViewKey(const ftxui::Event& event);
+    void switchView(View view);
+    void stepView(int step);
+    ftxui::Element renderTabs();
+    ftxui::Element renderTreeTitle() const;
 
     ftxui::Element render();
     ftxui::Element renderHeader();
@@ -111,6 +116,7 @@ private:
     JournalPane journal_;
     FilterState filters_ = defaultFilters();
     InputMode mode_ = InputMode::Tree;
+    View viewBeforeProblems_ = View::Tree; // where p returns to
     // Neither component is attached to the screen: events are routed by mode by hand.
     ftxui::Component searchInput_;
     ftxui::Component filterPanel_;
@@ -126,10 +132,8 @@ private:
 
     // Screen areas from the last frame, for mouse hit-testing.
     ftxui::Box searchBoxArea_;
-    ftxui::Box problemsLabelArea_;
-    ftxui::Box directionLabelArea_;
+    std::vector<ftxui::Box> tabAreas_ = std::vector<ftxui::Box>(allViews().size());
     ftxui::Box filtersLabelArea_;
-    ftxui::Box sortLabelArea_;
     ftxui::Box filterPanelArea_;
     ftxui::Box confirmDialogArea_;
     ftxui::Box detailsArea_;
@@ -483,12 +487,57 @@ bool Application::handleHeaderClick(const ftxui::Mouse& mouse) {
         setMode(InputMode::Search);
     } else if (filtersLabelArea_.Contain(mouse.x, mouse.y)) {
         setMode(InputMode::FilterPanel);
-    } else if (directionLabelArea_.Contain(mouse.x, mouse.y)) {
-        tree_.toggleDirection();
-    } else if (sortLabelArea_.Contain(mouse.x, mouse.y)) {
-        tree_.cycleListOrder();
-    } else if (problemsLabelArea_.Contain(mouse.x, mouse.y)) {
-        filters_.problemsOnly = !filters_.problemsOnly;
+    } else {
+        std::vector<View> views = allViews();
+        for (std::size_t index = 0; index < views.size(); ++index) {
+            if (tabAreas_[index].Contain(mouse.x, mouse.y)) {
+                switchView(views[index]);
+                return true;
+            }
+        }
+        return false;
+    }
+    return true;
+}
+
+void Application::switchView(View view) {
+    if (view == View::Problems && tree_.view() != View::Problems) {
+        viewBeforeProblems_ = tree_.view();
+    }
+    tree_.setView(view);
+}
+
+/// Moves one tab left (-1) or right (+1), wrapping around.
+void Application::stepView(int step) {
+    std::vector<View> views = allViews();
+    int count = static_cast<int>(views.size());
+    int current = 0;
+    for (int index = 0; index < count; ++index) {
+        if (views[index] == tree_.view()) {
+            current = index;
+        }
+    }
+    switchView(views[(current + step + count) % count]);
+}
+
+// 1-5 pick a tab, Tab/Shift+Tab step through them. d and p are shortcuts for the two
+// most common switches: forward <-> reverse, and in and out of the problems list.
+bool Application::handleViewKey(const ftxui::Event& event) {
+    std::vector<View> views = allViews();
+    for (std::size_t index = 0; index < views.size(); ++index) {
+        if (isCharacter(event, static_cast<char>('1' + index))) {
+            switchView(views[index]);
+            return true;
+        }
+    }
+    if (event == ftxui::Event::Tab) {
+        stepView(1);
+    } else if (event == ftxui::Event::TabReverse) {
+        stepView(-1);
+    } else if (isCharacter(event, 'd')) {
+        switchView(tree_.view() == View::Tree ? View::Dependents : View::Tree);
+    } else if (isCharacter(event, 'p')) {
+        switchView(tree_.view() == View::Problems ? viewBeforeProblems_ : View::Problems);
     } else {
         return false;
     }
@@ -519,10 +568,6 @@ bool Application::handleFilterPanelEvent(const ftxui::Event& event) {
         setMode(InputMode::Tree);
         return true;
     }
-    if (isCharacter(event, 'p')) {
-        filters_.problemsOnly = !filters_.problemsOnly;
-        return true;
-    }
     return filterPanel_->OnEvent(event);
 }
 
@@ -533,10 +578,6 @@ bool Application::handleTreeModeEvent(const ftxui::Event& event) {
     }
     if (isCharacter(event, 'F')) {
         setMode(InputMode::FilterPanel);
-        return true;
-    }
-    if (isCharacter(event, 'p')) {
-        filters_.problemsOnly = !filters_.problemsOnly;
         return true;
     }
     if (isCharacter(event, '?')) {
@@ -551,8 +592,8 @@ bool Application::handleTreeModeEvent(const ftxui::Event& event) {
         startReload();
         return true;
     }
-    return handleMovementKey(event) || handleTreeKey(event) || handlePaneKey(event) ||
-           handleActionKey(event);
+    return handleViewKey(event) || handleMovementKey(event) || handleTreeKey(event) ||
+           handlePaneKey(event) || handleActionKey(event);
 }
 
 bool Application::handlePaneKey(const ftxui::Event& event) {
@@ -600,10 +641,6 @@ bool Application::handleTreeKey(const ftxui::Event& event) {
         tree_.focusSelected();
     } else if (event == Event::Backspace) {
         tree_.goBack();
-    } else if (isCharacter(event, 'd')) {
-        tree_.toggleDirection();
-    } else if (isCharacter(event, 'b')) {
-        tree_.cycleListOrder();
     } else {
         return false;
     }
@@ -620,7 +657,7 @@ ftxui::Element Application::render() {
     Elements sections = {
         renderHeader(),
         hbox({
-            window(text(" tree "), tree_.render()) | flex,
+            window(renderTreeTitle(), tree_.render()) | flex,
             renderDetailsPane(),
         }) | flex,
     };
@@ -707,29 +744,50 @@ ftxui::Element Application::renderSearchBox() {
 
 // The labels are a right-aligned flexbox beside the search box, so on a narrow terminal
 // they wrap onto extra lines in that column instead of being cut off or pushed under it.
+// Tabs and the filter summary wrap within their own column; the search box keeps its own.
 ftxui::Element Application::renderHeader() {
     using namespace ftxui;
-    Elements labels;
+    Elements items = {renderTabs()};
+    items.push_back(text("[filters: " + std::to_string(countDisabledFilters(filters_)) + " off]") |
+                    reflect(filtersLabelArea_));
+    FlexboxConfig layout;
+    layout.SetGap(2, 0);
+    Element left = flexbox(items, layout) | vcenter | flex;
+    return hbox({text(" "), left, renderSearchBox()});
+}
+
+ftxui::Element Application::renderTabs() {
+    using namespace ftxui;
+    int problemCount = 0;
+    for (const auto& [key, unit] : graph_.allUnits()) {
+        if (isProblem(unit, graph_)) {
+            ++problemCount;
+        }
+    }
+
+    Elements tabs;
+    std::vector<View> views = allViews();
+    for (std::size_t index = 0; index < views.size(); ++index) {
+        std::string label = " " + std::to_string(index + 1) + " " + toString(views[index]);
+        bool showBadge = views[index] == View::Problems && problemCount > 0;
+        Element badge =
+            showBadge ? text(" ⚠" + std::to_string(problemCount)) | color(Color::Yellow) : text("");
+        Element tab = hbox({text(label), badge, text(" ")});
+        tab = views[index] == tree_.view() ? tab | inverted | bold : tab | dim;
+        tabs.push_back(tab | reflect(tabAreas_[index]));
+    }
+    return hbox(tabs);
+}
+
+ftxui::Element Application::renderTreeTitle() const {
+    using namespace ftxui;
+    Elements title = {text(" " + toString(tree_.view()) + " ")};
     std::string focused = tree_.focusedUnitKey();
     if (!focused.empty()) {
-        labels.push_back(text("focus: " + focused) | color(Color::Cyan));
-        labels.push_back(text("(Backspace to go back)") | dim);
+        title.push_back(text("· focus: " + focused + " ") | color(Color::Cyan));
+        title.push_back(text("(Backspace: back) ") | dim);
     }
-    // Every label is always present so it can be clicked to toggle.
-    Element problems = filters_.problemsOnly ? text("[problems only]") | color(Color::Red) | bold
-                                             : text("[problems: off]") | dim;
-    labels.push_back(problems | reflect(problemsLabelArea_));
-    labels.push_back(text("[dir: " + toString(tree_.direction()) + "]") |
-                     reflect(directionLabelArea_));
-    labels.push_back(text("[sort: " + toString(tree_.listOrder()) + "]") | reflect(sortLabelArea_));
-    labels.push_back(text("[filters: " + std::to_string(countDisabledFilters(filters_)) + " off]") |
-                     reflect(filtersLabelArea_));
-
-    FlexboxConfig layout;
-    layout.Set(FlexboxConfig::JustifyContent::FlexEnd);
-    layout.SetGap(1, 0);
-    Element labelArea = flexbox(labels, layout) | vcenter | flex;
-    return hbox({renderSearchBox(), text(" "), labelArea, text(" ")});
+    return hbox(title);
 }
 
 // A flexbox so that, on a narrow terminal, whole hints wrap onto extra lines
@@ -760,7 +818,7 @@ std::vector<std::string> Application::keyHints() const {
     case InputMode::Search:
         return {"Enter keep", "Esc clear", "↑↓ move"};
     case InputMode::FilterPanel:
-        return {"Space/click toggle", "p problems", "Esc/click outside close"};
+        return {"Space/click toggle", "Esc/click outside close"};
     case InputMode::ConfirmAction:
         return {"y yes", "n/Esc no"};
     case InputMode::Help:

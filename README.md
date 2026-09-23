@@ -41,23 +41,27 @@ changed. A finished `daemon-reload`, or a unit that starts running but was not l
 triggers a full background reload instead. Units that are merely loaded for a moment (e.g. by
 `systemctl status`) are ignored.
 
-## The tree
+## Tabs
 
-- **Forward** (default): `System` and `User (<name>)` are the two `default.target`s. Children are
-  what a unit pulls in (`requires`, `wants`, ...). Units no walk from either root reaches are under
-  *Not reachable from default.target*; unit files systemd has not loaded are under *Not loaded*.
-- **Reverse** (`d`): a flat list of every unit, failed first. Children are who needs the unit
-  (`required-by`, `wanted-by`, ...).
-- `↻` marks a unit that already appears above it on the same branch (a dependency cycle).
-- `b` cycles the reverse list's order:
-  - **name**: failed first, then alphabetical (default);
-  - **slowest**: by startup time, slowest first, like `systemd-analyze blame`;
-  - **boot order**: when each unit started, counted from kernel start, earliest first. Rows show
-    `+start (duration)`. Units started after their manager finished booting (restarts, socket
-    activation, your login) come next, marked `after boot`, then units that never started.
-    systemd only keeps the *last* start time, so a restarted unit moves to the "after boot" part.
+The header has five tabs (`1`–`5`, `Tab`/`Shift+Tab`, or click). Search and filters apply to all
+of them, and a unit focused with `Enter` stays focused when you switch.
 
-  Flipping to the forward tree goes back to "name".
+1. **Tree**: `System` and `User (<name>)` are the two `default.target`s; children are what a unit
+   pulls in (`requires`, `wants`, ...). Units neither root reaches are under *Not reachable from
+   default.target*; unit files systemd has not loaded are under *Not loaded*.
+2. **Dependents**: a flat list of every unit, failed first; children are who needs the unit
+   (`required-by`, `wanted-by`, ...). `d` flips between Tree and Dependents.
+3. **Boot**: units in the order they started, counted from kernel start. Rows show
+   `+start (duration)`. Units started after their manager finished booting (restarts, socket
+   activation, your login) come next, marked `after boot`, then units that never started.
+   systemd only keeps the *last* start time, so a restarted unit moves to the "after boot" part.
+4. **Slowest**: by startup time, slowest first, like `systemd-analyze blame`.
+5. **Problems**: only units that look broken (see below). Its tab shows how many there are
+   (`⚠N`); `p` jumps there and back.
+
+The flat lists (2–5) all expand to show who needs a unit. `↻` marks a unit that already appears
+above it on the same branch (a dependency cycle). The tree window's title shows the tab and any
+focused unit.
 
 Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 
@@ -105,7 +109,7 @@ and unmask only for masked ones. Missing units offer no actions. `?` shows every
   "only masked". `device`, `scope`, and `slice` are off by default because they are mostly noise.
   Each group has a `[toggle all]` button, and `[toggle all groups]` flips every group at once
   (all on, or all off if everything is already on). The "only" flags are not affected.
-- `p` toggles the **problems** view: failed units, missing units, units whose file could not be
+- The **Problems** tab (`5` or `p`) lists failed units, missing units, units whose file could not be
   parsed, `unowned` units, masked units that another unit requires, and units that **never
   started this boot although an active unit wants them** (marked `⚠`; see below). It ignores the checkboxes
   so nothing broken can hide behind a type filter.
@@ -142,8 +146,8 @@ effect on the next boot.
 - **Tree:** click a row to select it; click its arrow, or click an already-selected row, to
   expand/collapse. The wheel moves the cursor.
 - **Details and journal:** the wheel scrolls them.
-- **Header:** click the search box to type, `[problems ...]` to toggle the problems view,
-  `[dir: ...]` to flip the direction, `[sort: ...]` to toggle the startup-time sort, and `[filters: N off]` to open the filter panel.
+- **Header:** click a tab to switch to it, the search box to type, and `[filters: N off]` to open
+  the filter panel.
 - **Filter panel:** click checkboxes and buttons; click outside the panel or `[close]` to close it.
 - **Dialogs:** click `[yes]`/`[no]`; a click outside the confirmation cancels, any click closes help.
 
@@ -212,11 +216,11 @@ All keys:
 | `←/→`, `h/l` | collapse / expand (`←` on a collapsed row jumps to its parent) |
 | `Space` | toggle expand |
 | `Enter` / `Backspace` | focus on unit / go back |
-| `d` | toggle tree direction |
-| `b` | reverse list order: name / slowest / boot order |
+| `1`–`5`, `Tab` / `Shift+Tab` | switch tab: Tree, Dependents, Boot, Slowest, Problems |
+| `d` | Tree ↔ Dependents |
+| `p` | Problems ↔ previous tab |
 | `/` | search (`Enter` keeps, `Esc` clears, `↑/↓` move while typing) |
 | `F` | filter panel (arrows move, `Space`/`Enter` toggle, `Esc`/`F` close) |
-| `p` | problems preset |
 | `J` | show / hide the journal pane |
 | `L` | full journal in a pager |
 | `c` | unit file and drop-ins in a pager |
