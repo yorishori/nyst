@@ -110,6 +110,28 @@ std::uint64_t nextElapseAsRealtime(const PropertyMap& properties) {
     return realtimeNowUsec() + monotonic - monotonicNowUsec();
 }
 
+/// One row of the Conditions/Asserts properties, signature (sbbsi): name, triggering,
+/// negated, parameter, and state (negative = failed, 0 = not known, positive = met).
+using ConditionRow = sdbus::Struct<std::string, bool, bool, std::string, std::int32_t>;
+
+void applyConditions(const PropertyMap& properties, const char* propertyName, Unit& unit) {
+    for (const ConditionRow& row :
+         typedProperty<std::vector<ConditionRow>>(properties, propertyName, {})) {
+        std::string line = std::get<0>(row) + "=";
+        if (std::get<1>(row)) {
+            line += "|";
+        }
+        if (std::get<2>(row)) {
+            line += "!";
+        }
+        line += std::get<3>(row);
+        unit.conditions.push_back(line);
+        if (std::get<4>(row) < 0) {
+            unit.failedConditions.push_back(line);
+        }
+    }
+}
+
 void applyRuntimeProperties(const PropertyMap& properties, Unit& unit) {
     unit.result = stringProperty(properties, "Result");
     unit.mainExitKind = typedProperty<std::int32_t>(properties, "ExecMainCode", 0);
@@ -129,6 +151,8 @@ void applyRuntimeProperties(const PropertyMap& properties, Unit& unit) {
         typedProperty<std::uint64_t>(properties, "InactiveEnterTimestampMonotonic", 0);
     unit.conditionUsec = typedProperty<std::uint64_t>(properties, "ConditionTimestampMonotonic", 0);
     unit.conditionResult = typedProperty<bool>(properties, "ConditionResult", true);
+    applyConditions(properties, "Conditions", unit);
+    applyConditions(properties, "Asserts", unit);
     // Services call it TimeoutStartUSec; sockets, mounts, and swaps have one TimeoutUSec.
     unit.startTimeoutUsec = typedProperty<std::uint64_t>(properties, "TimeoutStartUSec", 0);
     if (unit.startTimeoutUsec == 0) {

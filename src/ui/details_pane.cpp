@@ -59,6 +59,10 @@ ftxui::Element field(const std::string& label, const std::string& value,
     return vbox(lines);
 }
 
+void appendAll(ftxui::Elements& target, const ftxui::Elements& source) {
+    target.insert(target.end(), source.begin(), source.end());
+}
+
 ftxui::Decorator activeStateStyle(ActiveState state) {
     switch (state) {
     case ActiveState::Active:
@@ -203,6 +207,24 @@ ftxui::Elements runtimeFields(const Unit& unit) {
     return fields;
 }
 
+/// Why a Condition*= check skipped the unit: the failed conditions if systemd kept them,
+/// otherwise all of them, since at least one did not hold.
+ftxui::Elements skippedFields(const Unit& unit) {
+    ftxui::Elements fields = {field("skipped", "at " + formatSinceBoot(unit.conditionUsec))};
+    bool knowsWhich = !unit.failedConditions.empty();
+    const std::vector<std::string>& shown = knowsWhich ? unit.failedConditions : unit.conditions;
+    if (shown.empty()) {
+        return fields;
+    }
+    fields.push_back(
+        field("", knowsWhich ? "because this did not hold:" : "because one of these did not hold:",
+              ftxui::dim));
+    for (const std::string& condition : shown) {
+        fields.push_back(field("", condition, ftxui::color(ftxui::Color::Yellow)));
+    }
+    return fields;
+}
+
 /// When the unit last started, how long that took, and how long it has been in its state.
 ftxui::Elements timingFields(const Unit& unit, const UnitGraph& graph) {
     ftxui::Elements fields;
@@ -238,8 +260,7 @@ ftxui::Elements timingFields(const Unit& unit, const UnitGraph& graph) {
         fields.push_back(field("stopped", formatSinceBoot(unit.inactiveEnterUsec)));
     }
     if (unit.conditionUsec != 0 && !unit.conditionResult) {
-        fields.push_back(field("skipped", "a Condition*= check failed at " +
-                                              formatSinceBoot(unit.conditionUsec)));
+        appendAll(fields, skippedFields(unit));
     }
     return fields;
 }
@@ -260,10 +281,6 @@ ftxui::Elements warningFields(const Unit& unit) {
                                ftxui::color(ftxui::Color::Yellow)));
     }
     return fields;
-}
-
-void appendAll(ftxui::Elements& target, const ftxui::Elements& source) {
-    target.insert(target.end(), source.begin(), source.end());
 }
 
 } // namespace

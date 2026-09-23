@@ -183,6 +183,8 @@ void copyRuntimeState(const Unit& from, Unit& to) {
     to.inactiveEnterUsec = from.inactiveEnterUsec;
     to.conditionUsec = from.conditionUsec;
     to.conditionResult = from.conditionResult;
+    to.conditions = from.conditions;
+    to.failedConditions = from.failedConditions;
     to.startTimeoutUsec = from.startTimeoutUsec;
 }
 
