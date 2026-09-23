@@ -1,7 +1,6 @@
 // Human-readable sizes, timestamps, and durations for display.
 #include "ui/format.hpp"
 
-#include <chrono>
 #include <cstdio>
 #include <ctime>
 
@@ -17,6 +16,22 @@ std::string printfToString(const char* format, double value, const char* unit) {
     return buffer;
 }
 
+std::uint64_t clockUsec(clockid_t clock) {
+    timespec now{};
+    clock_gettime(clock, &now);
+    return static_cast<std::uint64_t>(now.tv_sec) * kUsecPerSecond +
+           static_cast<std::uint64_t>(now.tv_nsec) / 1000;
+}
+
+std::string localTime(std::uint64_t usecSinceEpoch, const char* format) {
+    std::time_t seconds = static_cast<std::time_t>(usecSinceEpoch / kUsecPerSecond);
+    std::tm local{};
+    localtime_r(&seconds, &local);
+    char buffer[32];
+    std::strftime(buffer, sizeof(buffer), format, &local);
+    return buffer;
+}
+
 /// "3h", "2d", "45s": the single largest unit, which is all a glance needs.
 std::string roughSpan(std::uint64_t seconds) {
     if (seconds < 60) {
@@ -29,12 +44,6 @@ std::string roughSpan(std::uint64_t seconds) {
         return std::to_string(seconds / 3600) + "h";
     }
     return std::to_string(seconds / 86400) + "d";
-}
-
-std::uint64_t nowUsecSinceEpoch() {
-    auto now = std::chrono::system_clock::now().time_since_epoch();
-    return static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::microseconds>(now).count());
 }
 
 } // namespace
@@ -64,18 +73,33 @@ std::string formatDuration(std::uint64_t usec) {
     return std::to_string(seconds / 3600) + "h " + std::to_string(seconds % 3600 / 60) + "min";
 }
 
-std::string formatWallClockWithDistance(std::uint64_t usecSinceEpoch) {
-    std::time_t seconds = static_cast<std::time_t>(usecSinceEpoch / kUsecPerSecond);
-    std::tm localTime{};
-    localtime_r(&seconds, &localTime);
-    char buffer[32];
-    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M", &localTime);
+std::string formatRoughSpan(std::uint64_t usec) {
+    return roughSpan(usec / kUsecPerSecond);
+}
 
-    std::uint64_t now = nowUsecSinceEpoch();
+std::uint64_t monotonicAgeUsec(std::uint64_t monotonicUsec) {
+    std::uint64_t now = clockUsec(CLOCK_MONOTONIC);
+    return now > monotonicUsec ? now - monotonicUsec : 0;
+}
+
+// Wall-clock time = now - (monotonic now - monotonic then). Good enough for display;
+// it drifts only if the clock was changed since.
+std::string formatSinceBoot(std::uint64_t monotonicUsec) {
+    std::uint64_t age = monotonicAgeUsec(monotonicUsec);
+    std::uint64_t wallClock = clockUsec(CLOCK_REALTIME) - age;
+    const std::uint64_t day = 24ULL * 3600 * kUsecPerSecond;
+    const char* format = age < day ? "%H:%M:%S" : "%Y-%m-%d %H:%M";
+    return "+" + formatDuration(monotonicUsec) + "  (" + localTime(wallClock, format) + ")";
+}
+
+std::string formatWallClockWithDistance(std::uint64_t usecSinceEpoch) {
+    std::string buffer = localTime(usecSinceEpoch, "%Y-%m-%d %H:%M");
+
+    std::uint64_t now = clockUsec(CLOCK_REALTIME);
     std::string distance = usecSinceEpoch <= now
                                ? roughSpan((now - usecSinceEpoch) / kUsecPerSecond) + " ago"
                                : "in " + roughSpan((usecSinceEpoch - now) / kUsecPerSecond);
-    return std::string(buffer) + " (" + distance + ")";
+    return buffer + " (" + distance + ")";
 }
 
 } // namespace nyst

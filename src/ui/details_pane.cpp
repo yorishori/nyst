@@ -194,15 +194,45 @@ ftxui::Elements runtimeFields(const Unit& unit) {
         fields.push_back(field("restarts", std::to_string(unit.restartCount),
                                ftxui::color(ftxui::Color::Yellow)));
     }
-    std::uint64_t startup = startupDurationUsec(unit);
-    if (startup != 0) {
-        fields.push_back(field("startup", formatDuration(startup)));
-    }
     if (unit.lastTriggerUsec != 0) {
         fields.push_back(field("last run", formatWallClockWithDistance(unit.lastTriggerUsec)));
     }
     if (unit.nextElapseUsec != 0) {
         fields.push_back(field("next run", formatWallClockWithDistance(unit.nextElapseUsec)));
+    }
+    return fields;
+}
+
+/// When the unit last started, how long that took, and how long it has been in its state.
+ftxui::Elements timingFields(const Unit& unit, const UnitGraph& graph) {
+    ftxui::Elements fields;
+    if (unit.activatingUsec != 0) {
+        std::string started = formatSinceBoot(unit.activatingUsec);
+        if (graph.startedAfterBoot(unit)) {
+            started += " · after boot";
+        }
+        fields.push_back(field("started", started));
+    }
+    std::uint64_t startup = startupDurationUsec(unit);
+    if (startup != 0) {
+        fields.push_back(field("took", formatDuration(startup)));
+    }
+    bool isActive =
+        unit.activeState == ActiveState::Active || unit.activeState == ActiveState::Reloading;
+    if (isActive && unit.activeEnterUsec != 0) {
+        fields.push_back(
+            field("active", "for " + formatRoughSpan(monotonicAgeUsec(unit.activeEnterUsec)) +
+                                "  (since " + formatSinceBoot(unit.activeEnterUsec) + ")"));
+    }
+    bool wentInactive =
+        unit.activeState == ActiveState::Inactive || unit.activeState == ActiveState::Failed;
+    if (wentInactive && unit.inactiveEnterUsec != 0 &&
+        unit.inactiveEnterUsec > unit.activatingUsec) {
+        fields.push_back(field("stopped", formatSinceBoot(unit.inactiveEnterUsec)));
+    }
+    if (unit.conditionUsec != 0 && !unit.conditionResult) {
+        fields.push_back(field("skipped", "a Condition*= check failed at " +
+                                              formatSinceBoot(unit.conditionUsec)));
     }
     return fields;
 }
@@ -247,6 +277,11 @@ ftxui::Element renderDetails(const Unit* unit, const UnitGraph& graph) {
     lines.push_back(separatorEmpty());
     appendAll(lines, stateFields(*unit));
     appendAll(lines, runtimeFields(*unit));
+    Elements timing = timingFields(*unit, graph);
+    if (!timing.empty()) {
+        lines.push_back(separatorEmpty());
+        appendAll(lines, timing);
+    }
     lines.push_back(separatorEmpty());
     appendAll(lines, originFields(*unit, graph));
     if (!unit->error.empty()) {
