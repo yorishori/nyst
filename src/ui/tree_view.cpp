@@ -651,6 +651,9 @@ ftxui::Element renderUnitRow(const Row& row, const Unit& unit, TreeDirection dir
     }
 
     Elements right = {originTag(unit)};
+    if (!unit.wantedBy.empty()) {
+        right.push_back(text(" ⚠") | color(Color::Yellow) | bold);
+    }
     if (unit.locallyModified) {
         right.push_back(text(" ⚙") | color(Color::Yellow));
     }

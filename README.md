@@ -41,6 +41,7 @@ Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 | `●` green | active | `⚙` | drop-in outside `/usr/lib` |
 | `○` dim | inactive | `⇪` | `/etc` file shadows a packaged unit |
 | `✗` red | failed | `↻` | cycle, not expandable |
+| | | `⚠` | wanted by an active unit, never started |
 | `◐` yellow | transitioning | | |
 | `?` | missing | | |
 | `⊘` | masked | | |
@@ -77,7 +78,8 @@ units that are only known as unit files. Missing units offer no actions. `?` sho
   Each group has a `[toggle all]` button, and `[toggle all groups]` flips every group at once
   (all on, or all off if everything is already on). The "only" flags are not affected.
 - `p` toggles the **problems** view: failed units, missing units, units whose file could not be
-  parsed, `unowned` units, and masked units that another unit requires. It ignores the checkboxes
+  parsed, `unowned` units, masked units that another unit requires, and units that **never
+  started this boot although an active unit wants them** (marked `⚠`; see below). It ignores the checkboxes
   so nothing broken can hide behind a type filter.
 
 A row is shown if it passes the filters or if something in its *expanded* subtree does; rows kept
@@ -89,6 +91,14 @@ Searching in the forward tree **expands the way to every match**, using the shor
 first match. A unit that appears in several places is revealed once; the reverse direction (`d`)
 lists every match flat. You can still collapse revealed branches, and clearing the search puts
 the tree back the way you had it.
+
+### "Never started" (`⚠`)
+
+A loaded unit is flagged when an active unit pulls it in (`Requires=`, `Wants=`, `BindsTo=`,
+`Upholds=`) but it never left `inactive` this boot and no `Condition*=` check skipped it. That
+usually means its start job was dropped, e.g. to break an ordering cycle, or that it was enabled
+without being started. Oneshots that ran and exited, units you stopped, and units skipped by a
+condition are not flagged. Devices are ignored as pullers: they only pull units in when plugged.
 
 ## Mouse
 
@@ -111,7 +121,8 @@ key  activeState  subState  unitFileState  origin  package  runAsUser  #deps  #d
 
 - `-` means the field is empty.
 - `flags` is a comma list of `modified` (drop-in outside `/usr/lib`), `shadows` (an `/etc` file
-  overrides a packaged unit of the same name), `masked`, and `not-loaded` (only known as a unit file).
+  overrides a packaged unit of the same name), `masked`, `not-loaded` (only known as a unit file),
+  and `never-started` (see the `⚠` marker).
 - Lines starting with `#` are the header and the status message.
 
 Handy comparisons:

@@ -137,6 +137,20 @@ bool isMasked(const Unit& unit) {
     return unit.loadState == "masked";
 }
 
+bool neverStartedThisBoot(const Unit& unit) {
+    bool skippedByCondition = unit.conditionUsec != 0 && !unit.conditionResult;
+    return unit.isLoaded && unit.loadState == "loaded" &&
+           unit.activeState == ActiveState::Inactive && unit.activatingUsec == 0 &&
+           !skippedByCondition;
+}
+
+// Requisite= only checks that the target is already running, and PartOf=/Triggers=
+// never start anything, so they don't count.
+bool pullsIn(EdgeKind kind) {
+    return kind == EdgeKind::Requires || kind == EdgeKind::Wants || kind == EdgeKind::BindsTo ||
+           kind == EdgeKind::Upholds;
+}
+
 bool isShellSafeUnitName(const std::string& name) {
     if (name.empty()) {
         return false;

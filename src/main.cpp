@@ -30,6 +30,9 @@ std::string flagsOf(const nyst::Unit& unit) {
     if (!unit.isLoaded) {
         appendFlag(flags, "not-loaded");
     }
+    if (!unit.wantedBy.empty()) {
+        appendFlag(flags, "never-started");
+    }
     return flags;
 }
 

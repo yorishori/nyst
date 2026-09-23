@@ -89,6 +89,7 @@ UnitGraph loadEverything(std::string& statusMessage) {
 
     graph.addPlaceholdersForMissingTargets();
     graph.rebuildReverseEdges();
+    graph.rebuildDiagnostics();
 
     statusMessage = std::to_string(graph.allUnits().size()) + " units · " +
                     std::to_string(countFailedUnits(graph)) + " failed · " + systemStatus + " · " +

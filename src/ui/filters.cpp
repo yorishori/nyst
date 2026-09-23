@@ -179,6 +179,9 @@ bool isProblem(const Unit& unit, const UnitGraph& graph) {
         unit.loadState == "bad-setting") {
         return true;
     }
+    if (!unit.wantedBy.empty()) {
+        return true;
+    }
     return isMasked(unit) && isRequiredByAnotherUnit(unit, graph);
 }
 

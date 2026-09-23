@@ -31,6 +31,10 @@ public:
     /// Recomputes the reverse edge map from the forward edges. Call after any change.
     void rebuildReverseEdges();
 
+    /// Recomputes Unit::wantedBy for every unit: filled when an active unit pulls the unit
+    /// in but it never started. Needs the reverse edges; call after rebuildReverseEdges().
+    void rebuildDiagnostics();
+
 private:
     std::map<std::string, Unit> units_;
     std::map<std::string, std::vector<Edge>> reverseEdges_;

@@ -62,6 +62,24 @@ void UnitGraph::addPlaceholdersForMissingTargets() {
     }
 }
 
+void UnitGraph::rebuildDiagnostics() {
+    for (auto& [key, unit] : units_) {
+        unit.wantedBy.clear();
+        if (!neverStartedThisBoot(unit)) {
+            continue;
+        }
+        for (const Edge& dependent : dependentsOf(key)) {
+            const Unit* puller = find(dependent.target);
+            // Devices only pull units in when they get plugged; one that was already
+            // present when its manager started (common for user managers) never does.
+            if (pullsIn(dependent.kind) && puller != nullptr &&
+                puller->activeState == ActiveState::Active && puller->type != "device") {
+                unit.wantedBy.push_back(puller->name);
+            }
+        }
+    }
+}
+
 void UnitGraph::rebuildReverseEdges() {
     reverseEdges_.clear();
     for (const auto& [key, unit] : units_) {

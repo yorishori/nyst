@@ -203,6 +203,17 @@ ftxui::Elements runtimeFields(const Unit& unit) {
     return fields;
 }
 
+ftxui::Elements warningFields(const Unit& unit) {
+    ftxui::Elements fields;
+    if (!unit.wantedBy.empty()) {
+        fields.push_back(field("⚠ warning",
+                               "never started this boot, but these active units want it: " +
+                                   joinLines(unit.wantedBy),
+                               ftxui::color(ftxui::Color::Yellow)));
+    }
+    return fields;
+}
+
 void appendAll(ftxui::Elements& target, const ftxui::Elements& source) {
     target.insert(target.end(), source.begin(), source.end());
 }
@@ -216,6 +227,11 @@ ftxui::Element renderDetails(const Unit* unit, const UnitGraph& graph) {
     }
 
     Elements lines = {text(unit->name) | bold, separatorEmpty()};
+    Elements warnings = warningFields(*unit);
+    if (!warnings.empty()) {
+        appendAll(lines, warnings);
+        lines.push_back(separatorEmpty());
+    }
     appendAll(lines, identityFields(*unit));
     lines.push_back(separatorEmpty());
     appendAll(lines, stateFields(*unit));

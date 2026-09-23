@@ -32,7 +32,8 @@ FilterState defaultFilters();
 
 bool unitPassesFilters(const Unit& unit, const FilterState& filters, const UnitGraph& graph);
 
-/// Failed, missing, unloadable, unowned, or masked while another unit requires it.
+/// Failed, missing, unloadable, unowned, never started although an active unit wants it,
+/// or masked while another unit requires it.
 bool isProblem(const Unit& unit, const UnitGraph& graph);
 
 /// Number of unchecked boxes plus active "only" flags, for the header.

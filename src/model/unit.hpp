@@ -79,6 +79,10 @@ struct Unit {
     std::uint64_t activeEnterUsec = 0; // monotonic time it last became active
     std::uint64_t conditionUsec = 0;   // monotonic time its conditions were last checked
     bool conditionResult = true;       // false if a Condition*= check skipped the unit
+
+    // Diagnostics, filled in by UnitGraph::rebuildDiagnostics(). Names of active units that
+    // pull this one in although it never started this boot; empty if nothing is suspicious.
+    std::vector<std::string> wantedBy;
 };
 
 /// Builds the unique graph key for a unit, e.g. "user:pipewire.service".
@@ -91,6 +95,13 @@ std::string unitTypeFromName(const std::string& name);
 Unit makeMissingPlaceholder(Manager manager, const std::string& name);
 
 bool isMasked(const Unit& unit);
+
+/// True if the unit is loaded but never left "inactive" this boot and no Condition*=
+/// check skipped it, i.e. nothing ever tried to start it (or its start job was dropped).
+bool neverStartedThisBoot(const Unit& unit);
+
+/// Pull-in dependencies: ones that make systemd start the target (Wants=, Requires=, ...).
+bool pullsIn(EdgeKind kind);
 
 /// True if the name only uses [A-Za-z0-9:_.@\-\\], so it can be single-quoted into a
 /// shell command. systemd already restricts names; this refuses anything unexpected.
