@@ -29,6 +29,10 @@ public:
     /// key. Returns false (and changes nothing) if there is no such unit.
     bool updateRuntimeState(const Unit& fresh);
 
+    /// Applies a usage sample to the unit with the same key (see applyUsageSample).
+    /// Returns false (and changes nothing) if there is no such unit.
+    bool updateUsage(const UsageSample& sample, std::uint64_t maxGapUsec);
+
     /// Records when a manager finished starting up (monotonic microseconds).
     void setBootFinishedUsec(Manager manager, std::uint64_t usec);
 

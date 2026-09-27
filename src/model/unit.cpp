@@ -165,6 +165,36 @@ std::uint64_t startupDurationUsec(const Unit& unit) {
     return 0;
 }
 
+bool isRunning(const Unit& unit) {
+    if (unit.type == "scope") {
+        return unit.subState == "running" || unit.subState == "abandoned";
+    }
+    // reload, reload-signal, reload-notify: still running, just reloading its config.
+    return unit.type == "service" &&
+           (unit.subState == "running" || unit.subState.rfind("reload", 0) == 0);
+}
+
+void applyUsageSample(const UsageSample& sample, std::uint64_t maxGapUsec, Unit& unit) {
+    unit.mainPid = sample.mainPid;
+    unit.memoryBytes = sample.memoryBytes;
+    unit.tasksCurrent = sample.tasksCurrent;
+    if (sample.sampledUsec == 0) {
+        unit.cpuPercent = -1;
+        return;
+    }
+    bool hasPrevious = unit.cpuSampleUsec != 0 && sample.sampledUsec > unit.cpuSampleUsec &&
+                       sample.cpuUsageNsec >= unit.cpuUsageNsec;
+    std::uint64_t gapUsec = sample.sampledUsec - unit.cpuSampleUsec;
+    if (hasPrevious && gapUsec <= maxGapUsec) {
+        double usedNsec = static_cast<double>(sample.cpuUsageNsec - unit.cpuUsageNsec);
+        unit.cpuPercent = usedNsec / (static_cast<double>(gapUsec) * 1000.0) * 100.0;
+    } else {
+        unit.cpuPercent = -1;
+    }
+    unit.cpuUsageNsec = sample.cpuUsageNsec;
+    unit.cpuSampleUsec = sample.sampledUsec;
+}
+
 void copyRuntimeState(const Unit& from, Unit& to) {
     to.loadState = from.loadState;
     to.activeState = from.activeState;
@@ -176,6 +206,9 @@ void copyRuntimeState(const Unit& from, Unit& to) {
     to.restartCount = from.restartCount;
     to.mainPid = from.mainPid;
     to.memoryBytes = from.memoryBytes;
+    to.tasksCurrent = from.tasksCurrent;
+    to.cpuUsageNsec = from.cpuUsageNsec;
+    to.cpuSampleUsec = from.cpuSampleUsec;
     to.lastTriggerUsec = from.lastTriggerUsec;
     to.nextElapseUsec = from.nextElapseUsec;
     to.activatingUsec = from.activatingUsec;

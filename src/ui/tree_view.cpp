@@ -4,6 +4,7 @@
 #include "ui/format.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <deque>
 
 namespace nyst {
@@ -70,6 +71,27 @@ bool slowestStartupFirst(const Unit* left, const Unit* right) {
     return left->key < right->key;
 }
 
+bool mostMemoryFirst(const Unit* left, const Unit* right) {
+    if (left->memoryBytes != right->memoryBytes) {
+        return left->memoryBytes > right->memoryBytes;
+    }
+    return left->key < right->key;
+}
+
+/// The comparison for a list order that is a plain sort (not boot order).
+bool (*sortFor(ListOrder order))(const Unit*, const Unit*) {
+    switch (order) {
+    case ListOrder::SlowestStartup:
+        return slowestStartupFirst;
+    case ListOrder::MostMemory:
+        return mostMemoryFirst;
+    case ListOrder::FailedFirst:
+    case ListOrder::BootOrder:
+        break;
+    }
+    return failedFirstThenByName;
+}
+
 /// Boot order key: first everything started during boot, then everything started later,
 /// then everything that never started; by start time within each part.
 struct BootOrderEntry {
@@ -129,12 +151,14 @@ std::string toString(View view) {
         return "Slowest";
     case View::Problems:
         return "Problems";
+    case View::Running:
+        return "Running";
     }
     return "Unknown";
 }
 
 std::vector<View> allViews() {
-    return {View::Tree, View::Dependents, View::Boot, View::Slowest, View::Problems};
+    return {View::Tree, View::Dependents, View::Boot, View::Slowest, View::Problems, View::Running};
 }
 
 std::string toString(ListOrder order) {
@@ -145,6 +169,8 @@ std::string toString(ListOrder order) {
         return "slowest";
     case ListOrder::BootOrder:
         return "boot order";
+    case ListOrder::MostMemory:
+        return "memory";
     }
     return "unknown";
 }
@@ -179,6 +205,7 @@ void TreeView::setGraph(const UnitGraph* graph) {
 void TreeView::setFilters(const FilterState& filters) {
     FilterState effective = filters;
     effective.problemsOnly = view_ == View::Problems;
+    effective.runningOnly = view_ == View::Running;
     if (effective == filters_) {
         return;
     }
@@ -276,6 +303,7 @@ void TreeView::setView(View view) {
     std::string unitBefore = before == nullptr ? "" : before->unitKey;
     view_ = view;
     filters_.problemsOnly = view_ == View::Problems;
+    filters_.runningOnly = view_ == View::Running;
     std::string focused = focusedUnitKey();
     if (!focused.empty()) {
         expandedPaths().insert(focused);
@@ -300,6 +328,8 @@ ListOrder TreeView::listOrder() const {
         return ListOrder::BootOrder;
     case View::Slowest:
         return ListOrder::SlowestStartup;
+    case View::Running:
+        return ListOrder::MostMemory;
     case View::Tree:
     case View::Dependents:
     case View::Problems:
@@ -373,9 +403,7 @@ std::vector<TreeNode> TreeView::reverseTopLevel() const {
         for (const auto& [key, unit] : graph_->allUnits()) {
             units.push_back(&unit);
         }
-        std::sort(units.begin(), units.end(),
-                  listOrder() == ListOrder::SlowestStartup ? slowestStartupFirst
-                                                           : failedFirstThenByName);
+        std::sort(units.begin(), units.end(), sortFor(listOrder()));
     }
 
     std::vector<TreeNode> nodes;
@@ -422,7 +450,12 @@ std::vector<TreeNode> TreeView::unitChildren(const std::string& unitKey) const {
     return children;
 }
 
+// Rows in the Running tab don't expand: it is a list of what runs, like top, and its
+// filter would hide nearly every dependent (targets don't run) anyway.
 bool TreeView::hasChildren(const TreeNode& node) const {
+    if (view_ == View::Running) {
+        return false;
+    }
     if (isGroup(node)) {
         return node.id == kUnreachableGroupId ? !unreachableKeys_.empty() : !notLoadedKeys_.empty();
     }
@@ -773,6 +806,41 @@ ftxui::Elements timingColumn(const Unit& unit, const UnitGraph& graph, ListOrder
     return timing;
 }
 
+ftxui::Element rightAligned(const std::string& value, int width) {
+    using namespace ftxui;
+    return hbox({filler(), text(value)}) | size(WIDTH, EQUAL, width);
+}
+
+/// "12.3%", or "-" until two samples close together are known.
+std::string cpuText(const Unit& unit) {
+    if (unit.cpuPercent < 0) {
+        return "-";
+    }
+    char buffer[16];
+    std::snprintf(buffer, sizeof(buffer), "%.1f%%", unit.cpuPercent);
+    return buffer;
+}
+
+/// Fixed-width pid, memory, CPU, and task columns for the Running tab, so they line up.
+/// Scopes have no main process, so their pid shows as "-".
+ftxui::Elements usageColumns(const Unit& unit, ListOrder order) {
+    using namespace ftxui;
+    if (order != ListOrder::MostMemory || !isRunning(unit)) {
+        return {};
+    }
+    std::string pid = unit.mainPid == 0 ? "-" : std::to_string(unit.mainPid);
+    std::string tasks =
+        std::to_string(unit.tasksCurrent) + (unit.tasksCurrent == 1 ? " task" : " tasks");
+    return {
+        text(" "),
+        rightAligned("pid " + pid, 11) | dim,
+        rightAligned(unit.memoryBytes == 0 ? "-" : formatBytes(unit.memoryBytes), 11) |
+            color(Color::Cyan),
+        rightAligned(cpuText(unit), 8) | color(Color::Yellow),
+        rightAligned(tasks, 10) | dim,
+    };
+}
+
 ftxui::Element renderUnitRow(const Row& row, const Unit& unit, const UnitGraph& graph,
                              TreeDirection direction, ListOrder order, ftxui::Elements left) {
     using namespace ftxui;
@@ -801,8 +869,12 @@ ftxui::Element renderUnitRow(const Row& row, const Unit& unit, const UnitGraph& 
     if (unit.shadowsPackagedUnit) {
         right.push_back(text(" ⇪") | color(Color::Yellow));
     }
+    // Last, so the fixed-width usage columns line up however wide the origin tag is.
+    Elements usage = usageColumns(unit, order);
+    right.insert(right.end(), usage.begin(), usage.end());
     right.push_back(text(" "));
-    return hbox({hbox(left), filler(), hbox(right)});
+    // On a narrow terminal the name gives way, not the columns on the right.
+    return hbox({hbox(left) | xflex_shrink, filler(), hbox(right)});
 }
 
 ftxui::Element renderRow(const Row& row, const UnitGraph& graph, TreeDirection direction,

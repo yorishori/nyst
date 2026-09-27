@@ -174,15 +174,25 @@ void applyWhatItRuns(const PropertyMap& properties, Unit& unit) {
     }
 }
 
+/// Reads a cgroup counter; systemd reports "unknown" (accounting off) as UINT64_MAX.
+std::uint64_t counterProperty(const PropertyMap& properties, const char* name) {
+    std::uint64_t value = typedProperty<std::uint64_t>(properties, name, UINT64_MAX);
+    return value == UINT64_MAX ? 0 : value;
+}
+
 void applyRuntimeProperties(const PropertyMap& properties, Unit& unit) {
     unit.result = stringProperty(properties, "Result");
     unit.mainExitKind = typedProperty<std::int32_t>(properties, "ExecMainCode", 0);
     unit.mainExitStatus = typedProperty<std::int32_t>(properties, "ExecMainStatus", 0);
     unit.restartCount = typedProperty<std::uint32_t>(properties, "NRestarts", 0);
     unit.mainPid = typedProperty<std::uint32_t>(properties, "MainPID", 0);
-    // systemd reports "unknown" as UINT64_MAX.
-    std::uint64_t memory = typedProperty<std::uint64_t>(properties, "MemoryCurrent", 0);
-    unit.memoryBytes = memory == UINT64_MAX ? 0 : memory;
+    unit.memoryBytes = counterProperty(properties, "MemoryCurrent");
+    unit.tasksCurrent = counterProperty(properties, "TasksCurrent");
+    std::uint64_t cpu = typedProperty<std::uint64_t>(properties, "CPUUsageNSec", UINT64_MAX);
+    if (cpu != UINT64_MAX) {
+        unit.cpuUsageNsec = cpu;
+        unit.cpuSampleUsec = monotonicNowUsec();
+    }
     unit.lastTriggerUsec = typedProperty<std::uint64_t>(properties, "LastTriggerUSec", 0);
     unit.nextElapseUsec = nextElapseAsRealtime(properties);
     unit.activatingUsec =
@@ -307,6 +317,41 @@ void readNotLoadedUnitFiles(sdbus::IProxy& managerProxy, Manager manager, std::v
     }
 }
 
+/// Escapes fnmatch's special characters, so an exact unit name (which may contain a
+/// backslash, as in "dev-disk-by\x2duuid-...") can be passed as a pattern.
+std::string exactPattern(const std::string& name) {
+    std::string pattern;
+    for (char character : name) {
+        if (character == '*' || character == '?' || character == '[' || character == '\\') {
+            pattern += '\\';
+        }
+        pattern += character;
+    }
+    return pattern;
+}
+
+/// Services keep their cgroup properties on the Service interface, scopes on Scope.
+const char* cgroupInterfaceFor(const std::string& type) {
+    return type == "scope" ? "org.freedesktop.systemd1.Scope" : "org.freedesktop.systemd1.Service";
+}
+
+UsageSample readUsageSample(sdbus::IConnection& connection, const std::string& objectPath,
+                            const Unit& unit) {
+    auto proxy = makeProxy(connection, objectPath);
+    PropertyMap properties = proxy->getAllProperties().onInterface(cgroupInterfaceFor(unit.type));
+    UsageSample sample;
+    sample.key = unit.key;
+    sample.mainPid = typedProperty<std::uint32_t>(properties, "MainPID", 0);
+    sample.memoryBytes = counterProperty(properties, "MemoryCurrent");
+    sample.tasksCurrent = counterProperty(properties, "TasksCurrent");
+    std::uint64_t cpu = typedProperty<std::uint64_t>(properties, "CPUUsageNSec", UINT64_MAX);
+    if (cpu != UINT64_MAX) {
+        sample.cpuUsageNsec = cpu;
+        sample.sampledUsec = monotonicNowUsec();
+    }
+    return sample;
+}
+
 } // namespace
 
 std::unique_ptr<sdbus::IConnection> connectToManager(Manager manager) {
@@ -347,6 +392,54 @@ ManagerSnapshot readManager(Manager manager) {
         debugLog(toString(manager) + " bus failed: " + error.getName() + ": " + error.getMessage());
     }
     return snapshot;
+}
+
+std::vector<UsageSample> readRunningUsage(sdbus::IConnection& connection, Manager manager,
+                                          const std::string& onlyUnit) {
+    std::vector<std::string> states = {"active", "reloading", "deactivating"};
+    std::vector<std::string> patterns = {"*.service", "*.scope"};
+    if (!onlyUnit.empty()) {
+        patterns = {exactPattern(onlyUnit)};
+    }
+    std::vector<ListUnitsRow> rows;
+    makeProxy(connection, kManagerPath)
+        ->callMethod("ListUnitsByPatterns")
+        .onInterface(kManagerInterface)
+        .withArguments(states, patterns)
+        .storeResultsTo(rows);
+
+    std::vector<UsageSample> samples;
+    for (const ListUnitsRow& row : rows) {
+        Unit unit = unitFromListing(row, manager);
+        if (!isRunning(unit)) {
+            continue;
+        }
+        try {
+            samples.push_back(readUsageSample(connection, std::get<6>(row), unit));
+        } catch (const sdbus::Error& error) {
+            // Usually the unit stopped between the listing and the read.
+            debugLog("usage of " + unit.key + " failed: " + error.getMessage());
+        }
+    }
+    return samples;
+}
+
+/// One row of Manager.GetUnitProcesses, signature (sus): cgroup, PID, command line.
+using ProcessRow = sdbus::Struct<std::string, std::uint32_t, std::string>;
+
+std::vector<UnitProcess> readUnitProcesses(sdbus::IConnection& connection,
+                                           const std::string& unitName) {
+    std::vector<ProcessRow> rows;
+    makeProxy(connection, kManagerPath)
+        ->callMethod("GetUnitProcesses")
+        .onInterface(kManagerInterface)
+        .withArguments(unitName)
+        .storeResultsTo(rows);
+    std::vector<UnitProcess> processes;
+    for (const ProcessRow& row : rows) {
+        processes.push_back(UnitProcess{std::get<1>(row), std::get<2>(row)});
+    }
+    return processes;
 }
 
 } // namespace nyst

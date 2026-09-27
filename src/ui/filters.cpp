@@ -91,10 +91,14 @@ bool isRequiredByAnotherUnit(const Unit& unit, const UnitGraph& graph) {
     return false;
 }
 
+// The Running tab decides type and state itself: scopes are hidden by default elsewhere,
+// but a running scope (a login session, a desktop app) is just what that tab is for.
 bool passesCheckboxes(const Unit& unit, const FilterState& filters) {
-    return isEnabled(filters.unitTypes, unit.type) &&
-           isEnabled(filters.activeStates, activeStateGroup(unit.activeState)) &&
-           isEnabled(filters.managers, toString(unit.manager)) &&
+    bool typeAndState = filters.runningOnly ? isRunning(unit)
+                                            : isEnabled(filters.unitTypes, unit.type) &&
+                                                  isEnabled(filters.activeStates,
+                                                            activeStateGroup(unit.activeState));
+    return typeAndState && isEnabled(filters.managers, toString(unit.manager)) &&
            isEnabled(filters.origins, toString(unit.origin));
 }
 

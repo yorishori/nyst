@@ -6,6 +6,7 @@
 #include "source/journal.hpp"
 #include "source/live_updates.hpp"
 #include "source/loader.hpp"
+#include "source/usage_poller.hpp"
 #include "ui/details_pane.hpp"
 #include "ui/dialogs.hpp"
 #include "ui/filters.hpp"
@@ -20,6 +21,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <string>
@@ -68,6 +70,8 @@ private:
     void applyLoadResult(LoadResult& result);
     void startWatching();
     void applyLiveChanges(const UnitChanges& changes);
+    void startPolling();
+    void applyUsage(const UsageUpdate& update);
     void setMode(InputMode mode);
     bool handleEvent(const ftxui::Event& event);
     bool handleTreeModeEvent(const ftxui::Event& event);
@@ -113,6 +117,10 @@ private:
     bool loading_ = false;
     bool reloadQueued_ = false;
     std::unique_ptr<UnitWatcher> watcher_; // live updates; created once the screen exists
+    std::unique_ptr<UsagePoller> poller_;  // memory/CPU/tasks; created once the screen exists
+    // Processes of the unit the poller watches (the selected one, while it runs).
+    std::string processesUnitKey_;
+    std::vector<UnitProcess> processes_;
     TreeView tree_;
     JournalPane journal_;
     FilterState filters_ = defaultFilters();
@@ -203,6 +211,7 @@ int Application::run() {
     screen_ = &screen;
     startReload();
     startWatching();
+    startPolling();
 
     auto renderer = ftxui::Renderer([this] { return render(); });
     auto component = ftxui::CatchEvent(
@@ -210,6 +219,7 @@ int Application::run() {
     screen.Loop(component);
 
     watcher_.reset();
+    poller_.reset();
     // A load may still be running and about to Post to the screen; let it finish first.
     if (loaderThread_.joinable()) {
         loaderThread_.join();
@@ -289,6 +299,33 @@ void Application::applyLiveChanges(const UnitChanges& changes) {
     tree_.setGraph(&graph_);
     if (needsReload) {
         startReload();
+    }
+}
+
+void Application::startPolling() {
+    ftxui::ScreenInteractive* screen = screen_;
+    poller_ = std::make_unique<UsagePoller>([this, screen](UsageUpdate update) {
+        auto shared = std::make_shared<UsageUpdate>(std::move(update));
+        screen->Post([this, shared] { applyUsage(*shared); });
+        screen->PostEvent(ftxui::Event::Custom);
+    });
+}
+
+// Samples more than a few intervals apart (e.g. the one taken at load time) are too far
+// apart to say how busy a unit is right now.
+void Application::applyUsage(const UsageUpdate& update) {
+    const std::uint64_t maxGapUsec =
+        3 * std::chrono::duration_cast<std::chrono::microseconds>(kUsagePollInterval).count();
+    for (const UsageSample& sample : update.samples) {
+        graph_.updateUsage(sample, maxGapUsec);
+    }
+    if (!update.processesUnitKey.empty()) {
+        processesUnitKey_ = update.processesUnitKey;
+        processes_ = update.processes;
+    }
+    // Only the Running tab sorts by these numbers; elsewhere the rows stay as they are.
+    if (tree_.view() == View::Running) {
+        tree_.setGraph(&graph_);
     }
 }
 
@@ -521,7 +558,7 @@ void Application::stepView(int step) {
     switchView(views[(current + step + count) % count]);
 }
 
-// 1-5 pick a tab, Tab/Shift+Tab step through them. d and p are shortcuts for the two
+// 1-6 pick a tab, Tab/Shift+Tab step through them. d and p are shortcuts for the two
 // most common switches: forward <-> reverse, and in and out of the problems list.
 bool Application::handleViewKey(const ftxui::Event& event) {
     std::vector<View> views = allViews();
@@ -654,6 +691,8 @@ ftxui::Element Application::render() {
     using namespace ftxui;
     tree_.setFilters(filters_);
     journal_.showUnit(selectedUnit());
+    poller_->setPollAll(tree_.view() == View::Running);
+    poller_->watchUnit(selectedUnit());
 
     Elements sections = {
         renderHeader(),
@@ -700,7 +739,8 @@ ftxui::Element Application::renderDetailsPane() {
         detailsScroll_ = 0;
     }
 
-    Element content = renderDetails(unit, graph_);
+    bool processesKnown = unit != nullptr && isRunning(*unit) && processesUnitKey_ == key;
+    Element content = renderDetails(unit, graph_, processesKnown ? &processes_ : nullptr);
     content->ComputeRequirement();
     detailsContentHeight_ = content->requirement().min_y;
 
@@ -783,6 +823,10 @@ ftxui::Element Application::renderTabs() {
 ftxui::Element Application::renderTreeTitle() const {
     using namespace ftxui;
     Elements title = {text(" " + toString(tree_.view()) + " ")};
+    if (tree_.view() == View::Running) {
+        std::string interval = std::to_string(kUsagePollInterval.count()) + "s";
+        title.push_back(text("· updates every " + interval + " ") | dim);
+    }
     std::string focused = tree_.focusedUnitKey();
     if (!focused.empty()) {
         title.push_back(text("· focus: " + focused + " ") | color(Color::Cyan));

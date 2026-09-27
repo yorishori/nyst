@@ -28,7 +28,7 @@ std::vector<HelpSection> helpSections() {
           {"PgUp/PgDn", "move by a page"},
           {"Home/End  g/G", "first / last row"}}},
         {"tabs",
-         {{"1-5", "pick a tab"},
+         {{"1-6", "pick a tab"},
           {"Tab  S-Tab", "next / previous tab"},
           {"d", "Tree <-> Dependents"},
           {"p", "Problems <-> back"}}},

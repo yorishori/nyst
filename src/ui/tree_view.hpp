@@ -25,7 +25,8 @@ enum class View {
     Dependents, // flat list, failed first; children are who needs the unit
     Boot,       // flat list in boot order
     Slowest,    // flat list by startup time, like systemd-analyze blame
-    Problems    // flat list of problem units only
+    Problems,   // flat list of problem units only
+    Running     // flat list of running services and scopes, most memory first
 };
 
 /// Display name, e.g. "Dependents".
@@ -38,7 +39,8 @@ std::vector<View> allViews();
 enum class ListOrder {
     FailedFirst,    // failed units first, then by name
     SlowestStartup, // like systemd-analyze blame
-    BootOrder       // when each unit started, earliest first
+    BootOrder,      // when each unit started, earliest first
+    MostMemory      // most memory first
 };
 
 std::string toString(ListOrder order);
@@ -149,7 +151,8 @@ private:
 
     const UnitGraph* graph_ = nullptr;
     View view_ = View::Tree;
-    // The filters in effect: as given to setFilters(), with problemsOnly set by the view.
+    // The filters in effect: as given to setFilters(), with problemsOnly and runningOnly
+    // set by the view.
     FilterState filters_ = defaultFilters();
     std::set<std::string> forwardExpanded_;
     std::set<std::string> reverseExpanded_;

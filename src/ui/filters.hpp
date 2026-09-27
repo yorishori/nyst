@@ -23,6 +23,9 @@ struct FilterState {
     /// Shows only units that look broken, ignoring the checkbox groups. Set by the
     /// Problems tab, not by the user directly.
     bool problemsOnly = false;
+    /// Shows only running services and scopes (see isRunning), ignoring the unit type and
+    /// state checkboxes. Set by the Running tab, not by the user directly.
+    bool runningOnly = false;
     std::string search; // case-insensitive substring of name or description
 
     bool operator==(const FilterState& other) const = default;

@@ -83,6 +83,9 @@ struct Unit {
     std::uint32_t restartCount = 0;      // automatic restarts (services)
     std::uint32_t mainPid = 0;           // running main process (services)
     std::uint64_t memoryBytes = 0;       // current memory use of the unit's cgroup
+    std::uint64_t tasksCurrent = 0;      // processes and threads in the unit's cgroup
+    std::uint64_t cpuUsageNsec = 0;      // CPU time the unit's cgroup has used so far
+    std::uint64_t cpuSampleUsec = 0;     // monotonic time cpuUsageNsec was read; 0 if unknown
     std::uint64_t lastTriggerUsec = 0;   // timers: wall clock, microseconds since the epoch
     std::uint64_t nextElapseUsec = 0;    // timers: wall clock, microseconds since the epoch
     std::uint64_t activatingUsec = 0;    // monotonic time it last left "inactive"
@@ -98,12 +101,32 @@ struct Unit {
     std::uint64_t startTimeoutUsec = 0; // how long systemd lets a start take; 0 if unknown
                                         // or not applicable, kNoTimeout if it waits forever
 
+    // CPU use between the last two samples, in percent of one core; negative if unknown.
+    // Only the usage poller sets it, since it needs two samples close together.
+    double cpuPercent = -1;
+
     // Diagnostics, filled in by UnitGraph::rebuildDiagnostics(). Names of active units that
     // pull this one in although it never started this boot; empty if nothing is suspicious.
     std::vector<std::string> wantedBy;
     // Set by the loader from the boot journal: the ordering cycle ("a → b → a") that made
     // systemd drop this unit's start job at boot. Empty if that did not happen.
     std::string droppedByCycle;
+};
+
+/// Resource use of one running unit, read by the usage poller every couple of seconds.
+struct UsageSample {
+    std::string key;
+    std::uint32_t mainPid = 0;
+    std::uint64_t memoryBytes = 0;
+    std::uint64_t tasksCurrent = 0;
+    std::uint64_t cpuUsageNsec = 0;
+    std::uint64_t sampledUsec = 0; // monotonic; 0 if systemd did not report CPU use
+};
+
+/// One process in a unit's cgroup.
+struct UnitProcess {
+    std::uint32_t pid = 0;
+    std::string commandLine;
 };
 
 /// Builds the unique graph key for a unit, e.g. "user:pipewire.service".
@@ -128,6 +151,14 @@ bool hasWarning(const Unit& unit);
 /// How long the unit's last start took, like `systemd-analyze blame`: until it became active,
 /// or until it gave up and went inactive again (failed units). Microseconds; 0 if unknown.
 std::uint64_t startupDurationUsec(const Unit& unit);
+
+/// True for services and scopes that have processes right now: running (or reloading)
+/// services, and scopes that are running or abandoned by their creator.
+bool isRunning(const Unit& unit);
+
+/// Takes a usage sample for this unit. Works out cpuPercent if the previous CPU reading is
+/// recent enough (maxGapUsec) for the difference to mean "right now".
+void applyUsageSample(const UsageSample& sample, std::uint64_t maxGapUsec, Unit& unit);
 
 /// Copies everything that changes while a unit runs (states, result, PID, memory,
 /// timestamps, ...) from a freshly read copy. Identity, origin, paths, and edges stay.

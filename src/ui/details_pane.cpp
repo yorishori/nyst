@@ -3,6 +3,8 @@
 
 #include "ui/format.hpp"
 
+#include <algorithm>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -11,6 +13,8 @@ namespace nyst {
 namespace {
 
 const int kLabelWidth = 10;
+// A busy unit (a browser's scope, a build) can have hundreds of processes.
+const std::size_t kMaxProcessesShown = 25;
 // Border (2) + label column; values wrap in what is left.
 const int kValueWidth = kDetailsPaneWidth - 2 - kLabelWidth;
 
@@ -205,6 +209,17 @@ ftxui::Elements runtimeFields(const Unit& unit) {
     if (unit.memoryBytes != 0) {
         fields.push_back(field("memory", formatBytes(unit.memoryBytes)));
     }
+    if (unit.cpuPercent >= 0) {
+        char percent[16];
+        std::snprintf(percent, sizeof(percent), "%.1f%%", unit.cpuPercent);
+        fields.push_back(field("cpu", std::string(percent) + " of one core, " +
+                                          formatDuration(unit.cpuUsageNsec / 1000) + " total"));
+    } else if (unit.cpuUsageNsec != 0) {
+        fields.push_back(field("cpu", formatDuration(unit.cpuUsageNsec / 1000) + " total"));
+    }
+    if (unit.tasksCurrent != 0) {
+        fields.push_back(field("tasks", std::to_string(unit.tasksCurrent)));
+    }
     if (!unit.restartPolicy.empty()) {
         fields.push_back(field("restart", restartPolicyText(unit)));
     }
@@ -288,6 +303,24 @@ ftxui::Elements whatItRunsFields(const Unit& unit, const UnitGraph& graph) {
     return fields;
 }
 
+/// "pid  command line" for each process in the cgroup, the main one marked.
+ftxui::Elements processFields(const Unit& unit, const std::vector<UnitProcess>& processes) {
+    ftxui::Elements fields;
+    std::size_t shown = std::min(processes.size(), kMaxProcessesShown);
+    for (std::size_t index = 0; index < shown; ++index) {
+        const UnitProcess& process = processes[index];
+        std::string line = std::to_string(process.pid) + "  " + process.commandLine;
+        ftxui::Decorator style =
+            process.pid == unit.mainPid ? ftxui::bold : ftxui::Decorator(ftxui::nothing);
+        fields.push_back(field(index == 0 ? "processes" : "", line, style));
+    }
+    if (processes.size() > shown) {
+        fields.push_back(
+            field("", "... and " + std::to_string(processes.size() - shown) + " more", ftxui::dim));
+    }
+    return fields;
+}
+
 /// When the unit last started, how long that took, and how long it has been in its state.
 ftxui::Elements timingFields(const Unit& unit, const UnitGraph& graph) {
     ftxui::Elements fields;
@@ -348,7 +381,8 @@ ftxui::Elements warningFields(const Unit& unit) {
 
 } // namespace
 
-ftxui::Element renderDetails(const Unit* unit, const UnitGraph& graph) {
+ftxui::Element renderDetails(const Unit* unit, const UnitGraph& graph,
+                             const std::vector<UnitProcess>* processes) {
     using namespace ftxui;
     if (unit == nullptr) {
         return text("select a unit to see its details") | dim;
@@ -364,6 +398,10 @@ ftxui::Element renderDetails(const Unit* unit, const UnitGraph& graph) {
     lines.push_back(separatorEmpty());
     appendAll(lines, stateFields(*unit));
     appendAll(lines, runtimeFields(*unit));
+    if (processes != nullptr && !processes->empty()) {
+        lines.push_back(separatorEmpty());
+        appendAll(lines, processFields(*unit, *processes));
+    }
     Elements whatItRuns = whatItRunsFields(*unit, graph);
     if (!whatItRuns.empty()) {
         lines.push_back(separatorEmpty());

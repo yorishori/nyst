@@ -55,6 +55,15 @@ bool UnitGraph::updateRuntimeState(const Unit& fresh) {
     return true;
 }
 
+bool UnitGraph::updateUsage(const UsageSample& sample, std::uint64_t maxGapUsec) {
+    auto it = units_.find(sample.key);
+    if (it == units_.end()) {
+        return false;
+    }
+    applyUsageSample(sample, maxGapUsec, it->second);
+    return true;
+}
+
 void UnitGraph::setBootFinishedUsec(Manager manager, std::uint64_t usec) {
     bootFinishedUsec_[manager] = usec;
 }

@@ -35,4 +35,14 @@ std::unique_ptr<sdbus::IConnection> connectToManager(Manager manager);
 /// Throws sdbus::Error (e.g. if the unit was unloaded meanwhile); for use inside source/ only.
 Unit readUnitAt(sdbus::IConnection& connection, const std::string& objectPath, Manager manager);
 
+/// Usage of every running service and scope of the manager, or only of the named unit if
+/// onlyUnit is not empty (then zero or one sample). Throws sdbus::Error; source/ only.
+std::vector<UsageSample> readRunningUsage(sdbus::IConnection& connection, Manager manager,
+                                          const std::string& onlyUnit);
+
+/// Every process in the unit's cgroup, sub-cgroups included, as systemd lists them.
+/// Throws sdbus::Error; for use inside source/ only.
+std::vector<UnitProcess> readUnitProcesses(sdbus::IConnection& connection,
+                                           const std::string& unitName);
+
 } // namespace nyst

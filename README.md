@@ -48,7 +48,7 @@ for a failed service, `e enable · m mask · c unit file` for a unit file that i
 
 ## Tabs
 
-The header has five tabs (`1`–`5`, `Tab`/`Shift+Tab`, or click). Search and filters apply to all
+The header has six tabs (`1`–`6`, `Tab`/`Shift+Tab`, or click). Search and filters apply to all
 of them, and a unit focused with `Enter` stays focused when you switch.
 
 1. **Tree**: `System` and `User (<name>)` are the two `default.target`s; children are what a unit
@@ -63,8 +63,14 @@ of them, and a unit focused with `Enter` stays focused when you switch.
 4. **Slowest**: by startup time, slowest first, like `systemd-analyze blame`.
 5. **Problems**: only units that look broken (see below). Its tab shows how many there are
    (`⚠N`); `p` jumps there and back.
+6. **Running**: services and scopes that have processes right now, most memory first, like a
+   small `top` grouped by unit. Each row shows the main PID (`-` for scopes, which have none),
+   memory, CPU use, and the number of tasks (processes plus threads) in the unit's cgroup. It
+   includes scopes (login sessions, apps a desktop or terminal started, containers) even though
+   the scope type is filtered out elsewhere, and oneshots that ran and exited are not listed.
+   The type and state checkboxes don't apply here; manager, origin, and search do.
 
-The flat lists (2–5) all expand to show who needs a unit. `↻` marks a unit that already appears
+The flat lists (2–5) all expand to show who needs a unit; Running rows don't expand. `↻` marks a unit that already appears
 above it on the same branch (a dependency cycle). The tree window's title shows the tab and any
 focused unit.
 
@@ -80,12 +86,24 @@ Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 | `?` | missing | | |
 | `⊘` | masked | | |
 
+## Resource usage
+
+systemd sends no signal when a unit's memory or CPU use changes, so nyst polls for them every
+2 s, and only while it needs to: every running unit while the Running tab is open, and the
+selected unit (on any tab) while it runs. The tab title says `updates every 2s`. CPU is the
+share of one core used between the last two samples (`200%` = two cores busy), so it shows
+`-` until a second sample arrives. Polling costs systemd well under 1% of a core; the first
+seconds after nyst starts show systemd itself busy, because it is answering nyst's initial load.
+
 ## Details and journal
 
 - The **details** pane (right) shows everything known about the selected unit: description,
   manager and user, aliases, load/active/file state, runtime facts (result, exit status, PID,
-  memory, restarts, timer runs), origin and package, fragment/source/drop-in paths, edge counts,
+  memory, CPU, tasks, restarts, timer runs), origin and package, fragment/source/drop-in paths, edge counts,
   and any error hit while reading it.
+- A running service or scope lists its **processes**: every PID in its cgroup with its command
+  line, the main process in bold (at most 25, then how many more). The list refreshes with the
+  usage polling.
 - Services also show their **restart policy** (`Restart=` and the delay) next to how often
   systemd has restarted them.
 - A **what it runs** section shows a service's `ExecStart=` command lines and working

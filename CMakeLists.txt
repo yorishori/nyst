@@ -40,6 +40,7 @@ add_executable(nyst
     src/source/boot_log.cpp
     src/source/live_updates.cpp
     src/source/loader.cpp
+    src/source/usage_poller.cpp
     src/source/journal.cpp
     src/source/actions.cpp
     src/ui/app.cpp
