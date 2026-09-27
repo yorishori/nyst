@@ -773,6 +773,21 @@ std::string runsAsSuffix(const Unit& unit) {
     return nonRootService ? " (as " + unit.runAsUser + ")" : "";
 }
 
+/// True if the row sits below "User (...)" in the forward tree, which already says which
+/// manager it belongs to.
+bool isUnderUserRoot(const Row& row, const UnitGraph& graph, TreeDirection direction) {
+    std::string top = row.path.substr(0, row.path.find('/'));
+    return direction == TreeDirection::Forward && top == canonicalKey(graph, kUserRootKey);
+}
+
+/// " (user)" for user-manager units, so e.g. the two init.scopes can be told apart, except
+/// where the tree already shows it.
+std::string managerSuffix(const Row& row, const Unit& unit, const UnitGraph& graph,
+                          TreeDirection direction) {
+    bool implied = isUnderUserRoot(row, graph, direction);
+    return unit.manager == Manager::User && !implied ? " (user)" : "";
+}
+
 ftxui::Element renderGroupRow(const Row& row, ftxui::Elements left) {
     using namespace ftxui;
     std::string count = std::to_string(row.groupSize);
@@ -848,6 +863,7 @@ ftxui::Element renderUnitRow(const Row& row, const Unit& unit, const UnitGraph& 
     left.push_back(text(" "));
     if (row.label.empty()) {
         left.push_back(text(unit.name + runsAsSuffix(unit)));
+        left.push_back(text(managerSuffix(row, unit, graph, direction)) | dim);
     } else {
         left.push_back(text(row.label) | bold);
         left.push_back(text("  " + unit.name) | dim);

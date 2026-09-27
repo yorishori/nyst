@@ -76,6 +76,10 @@ focused unit.
 
 Row format: `▾ ● name (as user)   edge-kind   [origin] ⚙ ⇪`
 
+`(as user)` names the account a system service runs as. A dim `(user)` marks units of the user
+manager, so e.g. the system's and the user's `init.scope` can be told apart; the forward tree
+leaves it out below `User (<name>)`, which already says so.
+
 | Icon | Meaning | Marker | Meaning |
 |---|---|---|---|
 | `●` green | active | `⚙` | drop-in outside `/usr/lib` |
