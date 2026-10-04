@@ -1,0 +1,36 @@
+# Builds the latest commit of the checkout this directory sits in.
+# Usage: cd arch && makepkg -si
+
+pkgname=nyst
+pkgver=r30.bca07e3
+pkgrel=1
+pkgdesc='Terminal UI that shows every systemd unit as a navigable dependency tree'
+arch=('x86_64')
+url='https://github.com/yorishori/nyst'
+license=('unknown')
+depends=('gcc-libs' 'glibc' 'pacman' 'sdbus-cpp' 'systemd')
+makedepends=('cmake' 'git' 'pkgconf')
+# FTXUI is not in the repos; fetch the release CMakeLists.txt pins so the build needs no network.
+source=("nyst::git+file://${startdir%/*}"
+        'ftxui::git+https://github.com/ArthurSonzogni/FTXUI.git#tag=v7.0.3')
+sha256sums=('SKIP'
+            'SKIP')
+
+pkgver() {
+    cd nyst
+    printf 'r%s.%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+build() {
+    cmake -S nyst -B build \
+        -DCMAKE_BUILD_TYPE=None \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
+        -DFETCHCONTENT_SOURCE_DIR_FTXUI="$srcdir/ftxui"
+    cmake --build build
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install build
+    install -Dm644 nyst/README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

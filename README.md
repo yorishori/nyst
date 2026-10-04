@@ -22,6 +22,17 @@ cmake --build build -j
 ./build/nyst --dump   # data layer only
 ```
 
+## Install (Arch Linux)
+
+```sh
+cd arch
+makepkg -si
+```
+
+This packages the latest commit of this checkout (uncommitted changes are left out) and installs
+`/usr/bin/nyst`. The PKGBUILD lives in `arch/` because makepkg uses `./src` as its own work
+directory, which would collide with the source tree at the top level.
+
 ## Loading
 
 nyst opens immediately and loads in the background (about 2 s); the tree says "loading
